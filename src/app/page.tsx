@@ -1,69 +1,499 @@
-import Image from "next/image";
-import styles from "./page.module.css";
+"use client";
 
-export default function Home() {
+import { useState } from "react";
+import Link from "next/link";
+import {
+  Compass,
+  Sparkles,
+  Layers,
+  Key,
+  ShieldCheck,
+  ArrowRight,
+  ChevronDown,
+  ChevronUp,
+  GraduationCap,
+  Music,
+  Film,
+  Cpu,
+  Gamepad2,
+  Trophy,
+  Check,
+} from "lucide-react";
+import { CATEGORIES } from "@/lib/types";
+
+export default function LandingPage() {
+  const [activeFaq, setActiveFaq] = useState<number | null>(null);
+  const [demoMode, setDemoMode] = useState<"normal" | "category">("normal");
+
+  const faqs = [
+    {
+      q: "How does the All-in-One Content Discovery Platform work?",
+      a: "Our platform aggregates and normalizes discovery catalogs across education, music, movies, gaming, technology, sports, and news. You can browse across all categories in Normal Mode or focus entirely on a specific topic in Category Mode.",
+    },
+    {
+      q: "Do I need my own API keys to use the platform?",
+      a: "No! The platform includes a rich, verified curated discovery catalog out of the box. Connecting your personal YouTube Data API v3 or TMDB keys in Settings is completely optional and allows you to execute live searches with your own API quotas.",
+    },
+    {
+      q: "How are my private API keys stored and secured?",
+      a: "We employ server-side authenticated encryption using AES-256-GCM with unique 96-bit initialization vectors and 128-bit authentication tags. Decryption occurs strictly on the server for internal requests. Plaintext keys are never sent back to client browsers.",
+    },
+    {
+      q: "What is the difference between Normal Mode and Category Mode?",
+      a: "Normal Mode provides cross-category serendipitous discovery, blending your interests. Category Mode enforces strict topic isolation, ensuring queries, recommendations, and subcategories only return content from your chosen category.",
+    },
+    {
+      q: "Can I stream full movies on the platform?",
+      a: "No. The platform utilizes TMDB to discover titles, reviews, ratings, and official trailers. For full-length feature films, we link directly to legitimate third-party streaming and rental providers.",
+    },
+    {
+      q: "How does the recommendation engine personalize content?",
+      a: "We use a transparent rule-based scoring engine that considers your active browsing mode, preferred categories, watchlist saves, and recent search keywords. You can reset your recommendation signals at any time in Settings.",
+    },
+  ];
+
   return (
-    <div className={styles.page}>
-      <main className={styles.main}>
-        <Image
-          className={styles.logo}
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className={styles.intro}>
-          <h1>
-            To get started, edit the{" "}
-            <code className={styles.code}>page.tsx</code> file.
+    <div style={{ display: "flex", flexDirection: "column", gap: "5rem", paddingBottom: "4rem" }}>
+      {/* HERO SECTION */}
+      <section
+        style={{
+          position: "relative",
+          overflow: "hidden",
+          padding: "6rem 0 3rem",
+          background: "radial-gradient(circle at 50% 20%, rgba(56, 189, 248, 0.12), transparent 70%)",
+        }}
+      >
+        <div className="container" style={{ textAlign: "center", position: "relative", zIndex: 10 }}>
+          <div
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: "0.5rem",
+              padding: "0.375rem 0.875rem",
+              borderRadius: "var(--radius-full)",
+              backgroundColor: "rgba(56, 189, 248, 0.1)",
+              border: "1px solid rgba(56, 189, 248, 0.25)",
+              color: "var(--primary)",
+              fontSize: "0.8125rem",
+              fontWeight: 600,
+              marginBottom: "1.5rem",
+            }}
+          >
+            <Compass size={16} /> Content Discovery Reimagined
+          </div>
+
+          <h1
+            style={{
+              fontSize: "clamp(2.5rem, 5vw, 4.25rem)",
+              fontWeight: 800,
+              lineHeight: 1.15,
+              letterSpacing: "-0.03em",
+              maxWidth: "850px",
+              margin: "0 auto 1.5rem",
+              background: "linear-gradient(180deg, var(--text-main) 40%, var(--text-muted) 100%)",
+              WebkitBackgroundClip: "text",
+              WebkitTextFillColor: "transparent",
+            }}
+          >
+            One Platform. Every Interest.
           </h1>
-          <p>
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              target="_blank"
-              rel="noopener noreferrer"
+
+          <p
+            style={{
+              fontSize: "clamp(1.05rem, 2vw, 1.25rem)",
+              color: "var(--text-muted)",
+              maxWidth: "680px",
+              margin: "0 auto 2.5rem",
+              lineHeight: 1.6,
+            }}
+          >
+            Discover learning resources, music, movies, technology, gaming, and more — all in one place.
+          </p>
+
+          <div
+            style={{
+              display: "flex",
+              flexWrap: "wrap",
+              gap: "1rem",
+              justifyContent: "center",
+              alignItems: "center",
+              marginBottom: "3.5rem",
+            }}
+          >
+            <Link href="/auth/signup" className="btn btn-primary btn-lg">
+              Get Started <ArrowRight size={18} />
+            </Link>
+            <Link href="#features" className="btn btn-outline btn-lg">
+              Explore Features
+            </Link>
+          </div>
+
+          {/* Interactive Visual Dashboard Preview */}
+          <div
+            style={{
+              maxWidth: "1000px",
+              margin: "0 auto",
+              borderRadius: "var(--radius-lg)",
+              border: "1px solid var(--border-color)",
+              backgroundColor: "var(--bg-surface)",
+              boxShadow: "0 20px 50px rgba(0,0,0,0.6)",
+              overflow: "hidden",
+            }}
+          >
+            {/* Mock Dashboard Header */}
+            <div
+              style={{
+                display: "flex",
+                flexWrap: "wrap",
+                alignItems: "center",
+                justifyContent: "space-between",
+                padding: "1rem 1.5rem",
+                borderBottom: "1px solid var(--border-color)",
+                backgroundColor: "var(--bg-surface-elevated)",
+                gap: "1rem",
+              }}
             >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              Learning
-            </a>{" "}
-            center.
+              <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                <span style={{ width: "12px", height: "12px", borderRadius: "50%", backgroundColor: "#ef4444" }} />
+                <span style={{ width: "12px", height: "12px", borderRadius: "50%", backgroundColor: "#f59e0b" }} />
+                <span style={{ width: "12px", height: "12px", borderRadius: "50%", backgroundColor: "#10b981" }} />
+                <span style={{ marginLeft: "0.75rem", fontSize: "0.8125rem", color: "var(--text-dim)", fontWeight: 500 }}>
+                  Discovery Mission Control
+                </span>
+              </div>
+
+              {/* Interactive Demo Mode Toggle */}
+              <div style={{ display: "flex", gap: "0.375rem" }}>
+                <button
+                  type="button"
+                  onClick={() => setDemoMode("normal")}
+                  className={`chip btn-sm ${demoMode === "normal" ? "chip-active" : ""}`}
+                >
+                  <Sparkles size={14} /> Normal Mode
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setDemoMode("category")}
+                  className={`chip btn-sm ${demoMode === "category" ? "chip-active" : ""}`}
+                >
+                  <Layers size={14} /> Category Mode
+                </button>
+              </div>
+            </div>
+
+            {/* Mock Content Showcase Grid */}
+            <div style={{ padding: "1.5rem" }}>
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))",
+                  gap: "1.25rem",
+                  textAlign: "left",
+                }}
+              >
+                {demoMode === "normal" ? (
+                  <>
+                    <div className="card" style={{ padding: "1rem" }}>
+                      <span className="badge badge-rose" style={{ marginBottom: "0.5rem" }}>Study</span>
+                      <h4 style={{ fontSize: "0.9375rem", fontWeight: 600, marginBottom: "0.375rem" }}>
+                        Financial Accounting & Ledger Principles
+                      </h4>
+                      <p style={{ fontSize: "0.8125rem", color: "var(--text-muted)" }}>
+                        Comprehensive lecture on double-entry bookkeeping and cash flows.
+                      </p>
+                    </div>
+                    <div className="card" style={{ padding: "1rem" }}>
+                      <span className="badge badge-emerald" style={{ marginBottom: "0.5rem" }}>Music</span>
+                      <h4 style={{ fontSize: "0.9375rem", fontWeight: 600, marginBottom: "0.375rem" }}>
+                        Lofi Hip Hop Radio — 24/7 Focus Beats
+                      </h4>
+                      <p style={{ fontSize: "0.8125rem", color: "var(--text-muted)" }}>
+                        Peaceful instrumental melodies curated for coding and study.
+                      </p>
+                    </div>
+                    <div className="card" style={{ padding: "1rem" }}>
+                      <span className="badge badge-cyan" style={{ marginBottom: "0.5rem" }}>Movies</span>
+                      <h4 style={{ fontSize: "0.9375rem", fontWeight: 600, marginBottom: "0.375rem" }}>
+                        Dune: Part Two (TMDB Preview)
+                      </h4>
+                      <p style={{ fontSize: "0.8125rem", color: "var(--text-muted)" }}>
+                        Paul Atreides unites with the Fremen on Arrakis. Rating: 8.4/10.
+                      </p>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <div className="card" style={{ padding: "1rem", borderColor: "var(--primary)" }}>
+                      <span className="badge badge-cyan" style={{ marginBottom: "0.5rem" }}>Study • Accounting</span>
+                      <h4 style={{ fontSize: "0.9375rem", fontWeight: 600, marginBottom: "0.375rem" }}>
+                        Double-Entry Bookkeeping Deep Dive
+                      </h4>
+                      <p style={{ fontSize: "0.8125rem", color: "var(--text-muted)" }}>
+                        Strictly isolated study material excluding entertainment media.
+                      </p>
+                    </div>
+                    <div className="card" style={{ padding: "1rem", borderColor: "var(--primary)" }}>
+                      <span className="badge badge-cyan" style={{ marginBottom: "0.5rem" }}>Study • Economics</span>
+                      <h4 style={{ fontSize: "0.9375rem", fontWeight: 600, marginBottom: "0.375rem" }}>
+                        Microeconomics: Elasticity & Market Equilibrium
+                      </h4>
+                      <p style={{ fontSize: "0.8125rem", color: "var(--text-muted)" }}>
+                        University syllabus lecture series from leading institutions.
+                      </p>
+                    </div>
+                    <div className="card" style={{ padding: "1rem", borderColor: "var(--primary)" }}>
+                      <span className="badge badge-cyan" style={{ marginBottom: "0.5rem" }}>Study • Business Law</span>
+                      <h4 style={{ fontSize: "0.9375rem", fontWeight: 600, marginBottom: "0.375rem" }}>
+                        Contract Formation & Commercial Tort Law
+                      </h4>
+                      <p style={{ fontSize: "0.8125rem", color: "var(--text-muted)" }}>
+                        Essential legal frameworks for commerce and legal students.
+                      </p>
+                    </div>
+                  </>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* SECTION 1: PLATFORM FEATURES */}
+      <section id="features" className="container">
+        <div style={{ textAlign: "center", maxWidth: "700px", margin: "0 auto 3.5rem" }}>
+          <h2 style={{ fontSize: "2rem", fontWeight: 700, marginBottom: "1rem" }}>
+            Engineered for Purposeful Discovery
+          </h2>
+          <p style={{ color: "var(--text-muted)", fontSize: "1.0625rem", lineHeight: 1.6 }}>
+            Designed from the ground up to replace algorithm chaos with deliberate, focused, and secure media discovery.
           </p>
         </div>
-        <div className={styles.ctas}>
-          <a
-            className={styles.primary}
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className={styles.logo}
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={14}
-            />
-            Deploy Now
-          </a>
-          <a
-            className={styles.secondary}
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
+
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))", gap: "1.75rem" }}>
+          <div className="card" style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
+            <div style={{ width: "42px", height: "42px", borderRadius: "10px", backgroundColor: "rgba(56, 189, 248, 0.15)", color: "var(--primary)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+              <Layers size={22} />
+            </div>
+            <h3 style={{ fontSize: "1.25rem", fontWeight: 600 }}>Category & Normal Modes</h3>
+            <p style={{ color: "var(--text-muted)", fontSize: "0.9375rem", lineHeight: 1.6 }}>
+              Switch between laser-focused topic isolation for studies or coding, and broad serendipitous discovery across music, cinema, and games.
+            </p>
+          </div>
+
+          <div className="card" style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
+            <div style={{ width: "42px", height: "42px", borderRadius: "10px", backgroundColor: "rgba(16, 185, 129, 0.15)", color: "var(--accent-emerald)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+              <Key size={22} />
+            </div>
+            <h3 style={{ fontSize: "1.25rem", fontWeight: 600 }}>Encrypted API Connections</h3>
+            <p style={{ color: "var(--text-muted)", fontSize: "0.9375rem", lineHeight: 1.6 }}>
+              Connect personal YouTube and TMDB API keys with authenticated AES-256-GCM encryption. Your credentials remain private and unexposed.
+            </p>
+          </div>
+
+          <div className="card" style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
+            <div style={{ width: "42px", height: "42px", borderRadius: "10px", backgroundColor: "rgba(168, 85, 247, 0.15)", color: "var(--accent-purple)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+              <Sparkles size={22} />
+            </div>
+            <h3 style={{ fontSize: "1.25rem", fontWeight: 600 }}>Transparent Recommendations</h3>
+            <p style={{ color: "var(--text-muted)", fontSize: "0.9375rem", lineHeight: 1.6 }}>
+              Rule-based scoring that honors your active mode, explicit topical interests, and saved items, with full user controls to reset signals.
+            </p>
+          </div>
         </div>
-      </main>
+      </section>
+
+      {/* SECTION 2: CATEGORY-BASED DISCOVERY */}
+      <section id="categories" className="container">
+        <div style={{ textAlign: "center", maxWidth: "700px", margin: "0 auto 3rem" }}>
+          <h2 style={{ fontSize: "2rem", fontWeight: 700, marginBottom: "1rem" }}>
+            Comprehensive Topical Categories
+          </h2>
+          <p style={{ color: "var(--text-muted)", fontSize: "1.0625rem" }}>
+            Dive straight into structured subtopics curated across 8 core knowledge domains.
+          </p>
+        </div>
+
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: "1.25rem" }}>
+          {CATEGORIES.map((cat) => (
+            <div key={cat.id} className="card card-hover" style={{ padding: "1.25rem" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: "0.75rem", marginBottom: "0.75rem" }}>
+                <span style={{ color: "var(--primary)" }}>
+                  {cat.id === "study" && <GraduationCap size={20} />}
+                  {cat.id === "music" && <Music size={20} />}
+                  {cat.id === "movies" && <Film size={20} />}
+                  {cat.id === "technology" && <Cpu size={20} />}
+                  {cat.id === "gaming" && <Gamepad2 size={20} />}
+                  {cat.id === "sports" && <Trophy size={20} />}
+                </span>
+                <h4 style={{ fontWeight: 600, fontSize: "1rem" }}>{cat.name}</h4>
+              </div>
+              <p style={{ fontSize: "0.8125rem", color: "var(--text-muted)", marginBottom: "0.875rem", lineHeight: 1.5 }}>
+                {cat.description}
+              </p>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: "0.375rem" }}>
+                {cat.subcategories.slice(0, 3).map((sub) => (
+                  <span key={sub} className="badge" style={{ backgroundColor: "var(--bg-surface-elevated)", color: "var(--text-dim)" }}>
+                    {sub}
+                  </span>
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      {/* SECTION 5: SECURITY & PRIVACY CONTROLS */}
+      <section className="container">
+        <div
+          className="card"
+          style={{
+            padding: "3rem 2rem",
+            background: "linear-gradient(135deg, rgba(30, 41, 59, 0.6), rgba(15, 23, 42, 0.9))",
+            border: "1px solid var(--border-color)",
+            display: "grid",
+            gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))",
+            gap: "2.5rem",
+            alignItems: "center",
+          }}
+        >
+          <div>
+            <div style={{ display: "inline-flex", alignItems: "center", gap: "0.375rem", color: "var(--accent-emerald)", fontSize: "0.8125rem", fontWeight: 600, marginBottom: "0.75rem" }}>
+              <ShieldCheck size={18} /> Enterprise-Grade Credential Protection
+            </div>
+            <h2 style={{ fontSize: "1.875rem", fontWeight: 700, marginBottom: "1rem", lineHeight: 1.3 }}>
+              Your Data. Your Credentials. Strictly Isolated.
+            </h2>
+            <p style={{ color: "var(--text-muted)", lineHeight: 1.6, marginBottom: "1.5rem" }}>
+              We never expose plaintext secrets, track unconsented activity, or sell personal data. API keys are encrypted at rest with AES-256-GCM. You maintain complete control to export all your data or execute immediate account deletion.
+            </p>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: "1rem" }}>
+              <Link href="/privacy" className="btn btn-outline btn-sm">
+                Review Privacy Policy
+              </Link>
+              <Link href="/help/api-key-security" className="btn btn-outline btn-sm">
+                Read Security Whitepaper
+              </Link>
+            </div>
+          </div>
+
+          <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
+            <div style={{ display: "flex", gap: "0.75rem", alignItems: "flex-start" }}>
+              <div style={{ width: "24px", height: "24px", borderRadius: "50%", backgroundColor: "rgba(16, 185, 129, 0.2)", color: "var(--accent-emerald)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, marginTop: "2px" }}>
+                <Check size={14} />
+              </div>
+              <div>
+                <h4 style={{ fontSize: "0.9375rem", fontWeight: 600 }}>Authenticated AES-256-GCM</h4>
+                <p style={{ fontSize: "0.8125rem", color: "var(--text-muted)" }}>Tamper-proof encryption with 96-bit initialization vectors and 128-bit authentication tags.</p>
+              </div>
+            </div>
+
+            <div style={{ display: "flex", gap: "0.75rem", alignItems: "flex-start" }}>
+              <div style={{ width: "24px", height: "24px", borderRadius: "50%", backgroundColor: "rgba(16, 185, 129, 0.2)", color: "var(--accent-emerald)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, marginTop: "2px" }}>
+                <Check size={14} />
+              </div>
+              <div>
+                <h4 style={{ fontSize: "0.9375rem", fontWeight: 600 }}>Full Account Export & Erasure</h4>
+                <p style={{ fontSize: "0.8125rem", color: "var(--text-muted)" }}>Download your complete data archive anytime or delete your account in one click.</p>
+              </div>
+            </div>
+
+            <div style={{ display: "flex", gap: "0.75rem", alignItems: "flex-start" }}>
+              <div style={{ width: "24px", height: "24px", borderRadius: "50%", backgroundColor: "rgba(16, 185, 129, 0.2)", color: "var(--accent-emerald)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, marginTop: "2px" }}>
+                <Check size={14} />
+              </div>
+              <div>
+                <h4 style={{ fontSize: "0.9375rem", fontWeight: 600 }}>HttpOnly Secure Session Cookies</h4>
+                <p style={{ fontSize: "0.8125rem", color: "var(--text-muted)" }}>Guards against XSS credential harvesting by keeping session tokens outside localStorage.</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* SECTION 9: FREQUENTLY ASKED QUESTIONS */}
+      <section className="container" style={{ maxWidth: "800px" }}>
+        <div style={{ textAlign: "center", marginBottom: "3rem" }}>
+          <h2 style={{ fontSize: "2rem", fontWeight: 700, marginBottom: "0.75rem" }}>
+            Frequently Asked Questions
+          </h2>
+          <p style={{ color: "var(--text-muted)" }}>
+            Clear answers on features, quotas, security, and playback terms.
+          </p>
+        </div>
+
+        <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
+          {faqs.map((faq, index) => {
+            const isOpen = activeFaq === index;
+            return (
+              <div
+                key={index}
+                className="card"
+                style={{ padding: 0, overflow: "hidden", cursor: "pointer" }}
+                onClick={() => setActiveFaq(isOpen ? null : index)}
+              >
+                <div
+                  style={{
+                    padding: "1.25rem 1.5rem",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    gap: "1rem",
+                  }}
+                >
+                  <h4 style={{ fontSize: "1rem", fontWeight: 600, color: "var(--text-main)" }}>
+                    {faq.q}
+                  </h4>
+                  <span style={{ color: "var(--text-dim)" }}>
+                    {isOpen ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
+                  </span>
+                </div>
+                {isOpen && (
+                  <div
+                    style={{
+                      padding: "0 1.5rem 1.25rem",
+                      fontSize: "0.9375rem",
+                      color: "var(--text-muted)",
+                      lineHeight: 1.6,
+                      borderTop: "1px solid var(--border-color)",
+                      paddingTop: "1rem",
+                    }}
+                  >
+                    {faq.a}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      </section>
+
+      {/* FINAL SIGN UP CTA */}
+      <section className="container">
+        <div
+          className="card"
+          style={{
+            textAlign: "center",
+            padding: "4rem 2rem",
+            background: "radial-gradient(circle at 50% 50%, rgba(56, 189, 248, 0.15), transparent 80%)",
+            border: "1px solid var(--border-color)",
+          }}
+        >
+          <h2 style={{ fontSize: "2.25rem", fontWeight: 800, marginBottom: "1rem", letterSpacing: "-0.02em" }}>
+            Start Discovering Today
+          </h2>
+          <p style={{ color: "var(--text-muted)", fontSize: "1.125rem", maxWidth: "600px", margin: "0 auto 2rem", lineHeight: 1.6 }}>
+            Join thousands of curious minds navigating lectures, music, movies, and technology with total control.
+          </p>
+          <div style={{ display: "flex", justifyContent: "center", gap: "1rem", flexWrap: "wrap" }}>
+            <Link href="/auth/signup" className="btn btn-primary btn-lg">
+              Create Free Account <ArrowRight size={18} />
+            </Link>
+            <Link href="/help" className="btn btn-outline btn-lg">
+              Browse Help Center
+            </Link>
+          </div>
+        </div>
+      </section>
     </div>
   );
 }
