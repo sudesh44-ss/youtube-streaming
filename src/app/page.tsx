@@ -9,48 +9,21 @@ import {
   Key,
   ShieldCheck,
   ArrowRight,
-  ChevronDown,
-  ChevronUp,
   GraduationCap,
   Music,
   Film,
+  Laugh,
   Cpu,
   Gamepad2,
   Trophy,
+  Newspaper,
   Check,
 } from "lucide-react";
 import { CATEGORIES } from "@/lib/types";
+import { getSubcategoryPalette } from "@/lib/pastel-colors";
 
 export default function LandingPage() {
-  const [activeFaq, setActiveFaq] = useState<number | null>(null);
   const [demoMode, setDemoMode] = useState<"normal" | "category">("normal");
-
-  const faqs = [
-    {
-      q: "How does the All-in-One Content Discovery Platform work?",
-      a: "Our platform aggregates and normalizes discovery catalogs across education, music, movies, gaming, technology, sports, and news. You can browse across all categories in Normal Mode or focus entirely on a specific topic in Category Mode.",
-    },
-    {
-      q: "Do I need my own API keys to use the platform?",
-      a: "No! The platform includes a rich, verified curated discovery catalog out of the box. Connecting your personal YouTube Data API v3 or TMDB keys in Settings is completely optional and allows you to execute live searches with your own API quotas.",
-    },
-    {
-      q: "How are my private API keys stored and secured?",
-      a: "We employ server-side authenticated encryption using AES-256-GCM with unique 96-bit initialization vectors and 128-bit authentication tags. Decryption occurs strictly on the server for internal requests. Plaintext keys are never sent back to client browsers.",
-    },
-    {
-      q: "What is the difference between Normal Mode and Category Mode?",
-      a: "Normal Mode provides cross-category serendipitous discovery, blending your interests. Category Mode enforces strict topic isolation, ensuring queries, recommendations, and subcategories only return content from your chosen category.",
-    },
-    {
-      q: "Can I stream full movies on the platform?",
-      a: "No. The platform utilizes TMDB to discover titles, reviews, ratings, and official trailers. For full-length feature films, we link directly to legitimate third-party streaming and rental providers.",
-    },
-    {
-      q: "How does the recommendation engine personalize content?",
-      a: "We use a transparent rule-based scoring engine that considers your active browsing mode, preferred categories, watchlist saves, and recent search keywords. You can reset your recommendation signals at any time in Settings.",
-    },
-  ];
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "5rem", paddingBottom: "4rem" }}>
@@ -321,9 +294,12 @@ export default function LandingPage() {
                   {cat.id === "study" && <GraduationCap size={20} />}
                   {cat.id === "music" && <Music size={20} />}
                   {cat.id === "movies" && <Film size={20} />}
+                  {cat.id === "comedy" && <Laugh size={20} />}
                   {cat.id === "technology" && <Cpu size={20} />}
                   {cat.id === "gaming" && <Gamepad2 size={20} />}
+                  {cat.id === "anime" && <Sparkles size={20} />}
                   {cat.id === "sports" && <Trophy size={20} />}
+                  {cat.id === "news" && <Newspaper size={20} />}
                 </span>
                 <h4 style={{ fontWeight: 600, fontSize: "1rem" }}>{cat.name}</h4>
               </div>
@@ -331,11 +307,27 @@ export default function LandingPage() {
                 {cat.description}
               </p>
               <div style={{ display: "flex", flexWrap: "wrap", gap: "0.375rem" }}>
-                {cat.subcategories.slice(0, 3).map((sub) => (
-                  <span key={sub} className="badge" style={{ backgroundColor: "var(--bg-surface-elevated)", color: "var(--text-dim)" }}>
-                    {sub}
-                  </span>
-                ))}
+                {cat.subcategories.map((sub) => {
+                  const palette = getSubcategoryPalette(sub);
+                  return (
+                    <span
+                      key={sub}
+                      className="pastel-bubble"
+                      style={
+                        {
+                          "--pastel-bg-light": palette.bgLight,
+                          "--pastel-text-light": palette.textLight,
+                          "--pastel-border-light": palette.borderLight,
+                          "--pastel-bg-dark": palette.bgDark,
+                          "--pastel-text-dark": palette.textDark,
+                          "--pastel-border-dark": palette.borderDark,
+                        } as React.CSSProperties
+                      }
+                    >
+                      {sub}
+                    </span>
+                  );
+                })}
               </div>
             </div>
           ))}
@@ -410,90 +402,31 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* SECTION 9: FREQUENTLY ASKED QUESTIONS */}
-      <section className="container" style={{ maxWidth: "800px" }}>
-        <div style={{ textAlign: "center", marginBottom: "3rem" }}>
-          <h2 style={{ fontSize: "2rem", fontWeight: 700, marginBottom: "0.75rem" }}>
-            Frequently Asked Questions
-          </h2>
-          <p style={{ color: "var(--text-muted)" }}>
-            Clear answers on features, quotas, security, and playback terms.
-          </p>
-        </div>
+      <style jsx>{`
+        .pastel-bubble {
+          display: inline-flex;
+          align-items: center;
+          padding: 0.25rem 0.65rem;
+          font-size: 0.75rem;
+          font-weight: 500;
+          border-radius: var(--radius-full);
+          background-color: var(--pastel-bg-dark);
+          color: var(--pastel-text-dark);
+          border: 1px solid var(--pastel-border-dark);
+          transition: transform 0.15s ease;
+          line-height: 1.35;
+        }
 
-        <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
-          {faqs.map((faq, index) => {
-            const isOpen = activeFaq === index;
-            return (
-              <div
-                key={index}
-                className="card"
-                style={{ padding: 0, overflow: "hidden", cursor: "pointer" }}
-                onClick={() => setActiveFaq(isOpen ? null : index)}
-              >
-                <div
-                  style={{
-                    padding: "1.25rem 1.5rem",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "space-between",
-                    gap: "1rem",
-                  }}
-                >
-                  <h4 style={{ fontSize: "1rem", fontWeight: 600, color: "var(--text-main)" }}>
-                    {faq.q}
-                  </h4>
-                  <span style={{ color: "var(--text-dim)" }}>
-                    {isOpen ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
-                  </span>
-                </div>
-                {isOpen && (
-                  <div
-                    style={{
-                      padding: "0 1.5rem 1.25rem",
-                      fontSize: "0.9375rem",
-                      color: "var(--text-muted)",
-                      lineHeight: 1.6,
-                      borderTop: "1px solid var(--border-color)",
-                      paddingTop: "1rem",
-                    }}
-                  >
-                    {faq.a}
-                  </div>
-                )}
-              </div>
-            );
-          })}
-        </div>
-      </section>
+        :global([data-theme="light"]) .pastel-bubble {
+          background-color: var(--pastel-bg-light);
+          color: var(--pastel-text-light);
+          border-color: var(--pastel-border-light);
+        }
 
-      {/* FINAL SIGN UP CTA */}
-      <section className="container">
-        <div
-          className="card"
-          style={{
-            textAlign: "center",
-            padding: "4rem 2rem",
-            background: "radial-gradient(circle at 50% 50%, rgba(56, 189, 248, 0.15), transparent 80%)",
-            border: "1px solid var(--border-color)",
-          }}
-        >
-          <h2 style={{ fontSize: "2.25rem", fontWeight: 800, marginBottom: "1rem", letterSpacing: "-0.02em" }}>
-            Start Discovering Today
-          </h2>
-          <p style={{ color: "var(--text-muted)", fontSize: "1.125rem", maxWidth: "600px", margin: "0 auto 2rem", lineHeight: 1.6 }}>
-            Join thousands of curious minds navigating lectures, music, movies, and technology with total control.
-          </p>
-          <div style={{ display: "flex", justifyContent: "center", gap: "1rem", flexWrap: "wrap" }}>
-            <Link href="/auth/signup" className="btn btn-primary btn-lg">
-              Create Free Account <ArrowRight size={18} />
-            </Link>
-            <Link href="/help" className="btn btn-outline btn-lg">
-              Browse Help Center
-            </Link>
-          </div>
-        </div>
-      </section>
+        .pastel-bubble:hover {
+          transform: translateY(-1px);
+        }
+      `}</style>
     </div>
   );
 }

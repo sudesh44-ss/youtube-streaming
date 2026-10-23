@@ -3,6 +3,7 @@ import { getCurrentSession } from "@/lib/auth";
 import { getRecommendedContent } from "@/lib/recommendations";
 import { BrowsingMode } from "@/lib/types";
 
+export const dynamic = "force-dynamic";
 
 export async function GET(req: NextRequest) {
   try {
@@ -12,6 +13,7 @@ export async function GET(req: NextRequest) {
     const category = searchParams.get("category") || undefined;
     const subcategory = searchParams.get("subcategory") || undefined;
     const mode = (searchParams.get("mode") as BrowsingMode) || (category ? "category" : "normal");
+    const videoType = (searchParams.get("videoType") as "all" | "shorts" | "videos") || "all";
     const limit = parseInt(searchParams.get("limit") || "16", 10);
 
     const items = await getRecommendedContent({
@@ -19,6 +21,7 @@ export async function GET(req: NextRequest) {
       category,
       subcategory,
       mode,
+      videoType,
       limit,
     });
 
@@ -26,6 +29,7 @@ export async function GET(req: NextRequest) {
       success: true,
       mode,
       category,
+      videoType,
       count: items.length,
       items,
     });

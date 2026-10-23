@@ -2,9 +2,17 @@ import { NextRequest, NextResponse } from "next/server";
 import crypto from "node:crypto";
 import { getDb } from "@/lib/db";
 import { hashPassword, validatePasswordStrength, isValidEmail, createSession, setSessionCookie, logSecurityEvent, TERMS_VERSION, PRIVACY_VERSION } from "@/lib/auth";
+import { checkRateLimit, getClientIp, rateLimitExceededResponse, RATE_LIMIT_POLICIES } from "@/lib/rate-limit";
 
 export async function POST(req: NextRequest) {
   try {
+    const ip = getClientIp(req);
+    const rateCheck = await checkRateLimit(ip, RATE_LIMIT_POLICIES.REGISTER);
+    if (!rateCheck.success) {
+      logSecurityEvent(null, "RATE_LIMIT_EXCEEDED", `Registration rate limit exceeded for ${ip}`);
+      return rateLimitExceededResponse(rateCheck);
+    }
+
     const body = await req.json();
     const { name, email, password, confirmPassword, acceptTerms, acknowledgePrivacy } = body;
 
@@ -63,7 +71,6 @@ export async function POST(req: NextRequest) {
     // Record Legal Acceptance
     const acceptanceId = crypto.randomUUID();
     const userAgent = req.headers.get("user-agent") || undefined;
-    const ip = req.headers.get("x-forwarded-for") || undefined;
 
     db.prepare(`
       INSERT INTO legal_acceptance (id, user_id, terms_version, privacy_version, accepted_at, user_agent)

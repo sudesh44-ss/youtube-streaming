@@ -1,10 +1,12 @@
 "use client";
 
 import { CATEGORIES } from "@/lib/types";
+import { getSubcategoryPalette } from "@/lib/pastel-colors";
 import {
   GraduationCap,
   Music,
   Film,
+  Laugh,
   Cpu,
   Gamepad2,
   Sparkles,
@@ -34,6 +36,7 @@ export function CategoryBar({
       case "GraduationCap": return <GraduationCap size={16} />;
       case "Music": return <Music size={16} />;
       case "Film": return <Film size={16} />;
+      case "Laugh": return <Laugh size={16} />;
       case "Cpu": return <Cpu size={16} />;
       case "Gamepad2": return <Gamepad2 size={16} />;
       case "Sparkles": return <Sparkles size={16} />;
@@ -42,6 +45,10 @@ export function CategoryBar({
       default: return <LayoutGrid size={16} />;
     }
   };
+
+  if (!isCategoryMode) {
+    return null;
+  }
 
   const activeCategoryDef = CATEGORIES.find((c) => c.id === selectedCategory);
 
@@ -118,13 +125,27 @@ export function CategoryBar({
 
           {activeCategoryDef.subcategories.map((sub) => {
             const isSubSelected = selectedSubcategory?.toLowerCase() === sub.toLowerCase();
+            const palette = getSubcategoryPalette(sub);
             return (
               <button
                 key={sub}
                 type="button"
                 onClick={() => onSelectSubcategory(sub)}
-                className={`chip btn-sm ${isSubSelected ? "chip-active" : ""}`}
-                style={{ padding: "0.2rem 0.6rem", fontSize: "0.75rem" }}
+                className={`chip btn-sm ${isSubSelected ? "chip-active" : "subcat-pastel-chip"}`}
+                style={
+                  !isSubSelected
+                    ? ({
+                        "--pastel-bg-light": palette.bgLight,
+                        "--pastel-text-light": palette.textLight,
+                        "--pastel-border-light": palette.borderLight,
+                        "--pastel-bg-dark": palette.bgDark,
+                        "--pastel-text-dark": palette.textDark,
+                        "--pastel-border-dark": palette.borderDark,
+                        padding: "0.2rem 0.65rem",
+                        fontSize: "0.75rem",
+                      } as React.CSSProperties)
+                    : { padding: "0.2rem 0.65rem", fontSize: "0.75rem" }
+                }
               >
                 {sub}
               </button>
@@ -144,6 +165,26 @@ export function CategoryBar({
           )}
         </div>
       )}
+
+      <style jsx>{`
+        .subcat-pastel-chip {
+          background-color: var(--pastel-bg-dark) !important;
+          color: var(--pastel-text-dark) !important;
+          border: 1px solid var(--pastel-border-dark) !important;
+          transition: transform 0.15s ease, opacity 0.15s ease;
+        }
+
+        :global([data-theme="light"]) .subcat-pastel-chip {
+          background-color: var(--pastel-bg-light) !important;
+          color: var(--pastel-text-light) !important;
+          border-color: var(--pastel-border-light) !important;
+        }
+
+        .subcat-pastel-chip:hover {
+          transform: translateY(-1px);
+          opacity: 0.9;
+        }
+      `}</style>
     </div>
   );
 }

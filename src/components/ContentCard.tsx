@@ -1,100 +1,194 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
+import { useRouter } from "next/navigation";
 import { NormalizedContentItem } from "@/lib/types";
-import { Bookmark, Play, Video, Film, Music, Check } from "lucide-react";
+import { Bookmark, Clock, Check, MoreVertical } from "lucide-react";
+import {
+  isInLocalWatchlist,
+  isInLocalWatchLater,
+  toggleLocalWatchlist,
+  toggleLocalWatchLater,
+  STORAGE_CHANGE_EVENT,
+} from "@/lib/local-storage";
 
 interface ContentCardProps {
   item: NormalizedContentItem;
-  onSelect: (item: NormalizedContentItem) => void;
+  onSelect?: (item: NormalizedContentItem) => void;
   onToggleSave?: (item: NormalizedContentItem) => void;
+  showProgress?: boolean;
 }
 
-export function ContentCard({ item, onSelect, onToggleSave }: ContentCardProps) {
-  const [isSaved, setIsSaved] = useState(Boolean(item.saved));
-  const [saveLoading, setSaveLoading] = useState(false);
+export function ContentCard({ item, onSelect, onToggleSave, showProgress }: ContentCardProps) {
+  const router = useRouter();
+  const [inWatchlist, setInWatchlist] = useState(Boolean(item.saved));
+  const [inWatchLater, setInWatchLater] = useState(false);
+  const [showMenu, setShowMenu] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
 
-  const handleSaveClick = async (e: React.MouseEvent) => {
-    e.stopPropagation();
-    if (saveLoading) return;
-    setSaveLoading(true);
+  // Sync local storage state
+  useEffect(() => {
+    const videoId = item.providerId;
+    if (videoId) {
+      setInWatchlist(isInLocalWatchlist(videoId) || Boolean(item.saved));
+      setInWatchLater(isInLocalWatchLater(videoId));
+    }
 
-    const nextState = !isSaved;
-    setIsSaved(nextState);
-
-    try {
-      if (nextState) {
-        await fetch("/api/content/saved", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            provider: item.provider,
-            contentId: item.providerId,
-            contentType: item.contentType,
-            title: item.title,
-            description: item.description,
-            thumbnail: item.thumbnail,
-            category: item.category,
-            externalUrl: item.externalUrl,
-            metadata: {
-              creator: item.creator,
-              publicationDate: item.publicationDate,
-              playbackMethod: item.playbackMethod,
-              embedUrl: item.embedUrl,
-            },
-          }),
-        });
-      } else {
-        await fetch(`/api/content/saved?provider=${item.provider}&contentId=${item.providerId}`, {
-          method: "DELETE",
-        });
+    const handleStorageChange = () => {
+      if (videoId) {
+        setInWatchlist(isInLocalWatchlist(videoId));
+        setInWatchLater(isInLocalWatchLater(videoId));
       }
-      if (onToggleSave) onToggleSave({ ...item, saved: nextState });
-    } catch (err) {
-      console.error("Save toggle error:", err);
-      setIsSaved(!nextState); // revert on error
-    } finally {
-      setSaveLoading(false);
+    };
+
+    window.addEventListener(STORAGE_CHANGE_EVENT, handleStorageChange);
+    return () => window.removeEventListener(STORAGE_CHANGE_EVENT, handleStorageChange);
+  }, [item.providerId, item.saved]);
+
+  // Click-outside and Escape key handling for dropdown menu
+  useEffect(() => {
+    if (!showMenu) return;
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setShowMenu(false);
+    };
+
+    const handlePointerDown = (e: PointerEvent) => {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        setShowMenu(false);
+      }
+    };
+
+    document.addEventListener("keydown", handleKeyDown);
+    document.addEventListener("pointerdown", handlePointerDown);
+    return () => {
+      document.removeEventListener("keydown", handleKeyDown);
+      document.removeEventListener("pointerdown", handlePointerDown);
+    };
+  }, [showMenu]);
+
+  // Navigate to dedicated internal watch page on video click
+  const handleCardClick = () => {
+    if (item.provider === "youtube" && item.providerId) {
+      const params = new URLSearchParams();
+      if (item.title) params.set("title", item.title);
+      const q = params.toString();
+      router.push(`/watch/${encodeURIComponent(item.providerId)}${q ? `?${q}` : ""}`);
+      return;
     }
+    if (onSelect) onSelect(item);
   };
 
-  const getProviderIcon = () => {
-    switch (item.provider) {
-      case "youtube": return <Video size={13} />;
-      case "tmdb": return <Film size={13} />;
-      case "spotify": return <Music size={13} />;
+  const handleToggleWatchlist = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    const videoId = item.providerId;
+    if (!videoId) return;
+
+    const next = toggleLocalWatchlist({
+      videoId,
+      title: item.title,
+      thumbnailUrl: item.thumbnail,
+      channelId: undefined,
+      channelTitle: item.creator,
+      category: item.category,
+      duration: item.duration,
+      views: item.views,
+    });
+    setInWatchlist(next);
+
+    // Also inform optional parent callback
+    if (onToggleSave) onToggleSave({ ...item, saved: next });
+
+    // Optional backend sync for authenticated sessions (fail-safe)
+    if (next) {
+      fetch("/api/content/saved", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          provider: item.provider,
+          contentId: item.providerId,
+          contentType: item.contentType,
+          title: item.title,
+          description: item.description,
+          thumbnail: item.thumbnail,
+          category: item.category,
+          externalUrl: item.externalUrl,
+        }),
+      }).catch(() => {});
+    } else {
+      fetch(`/api/content/saved?provider=${item.provider}&contentId=${item.providerId}`, {
+        method: "DELETE",
+      }).catch(() => {});
     }
+
+    setShowMenu(false);
   };
 
-  const getBadgeClass = () => {
-    switch (item.provider) {
-      case "youtube": return "badge-rose";
-      case "tmdb": return "badge-cyan";
-      case "spotify": return "badge-emerald";
-    }
+  const handleToggleWatchLater = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    const videoId = item.providerId;
+    if (!videoId) return;
+
+    const next = toggleLocalWatchLater({
+      videoId,
+      title: item.title,
+      thumbnailUrl: item.thumbnail,
+      channelId: undefined,
+      channelTitle: item.creator,
+      category: item.category,
+      duration: item.duration,
+      views: item.views,
+    });
+    setInWatchLater(next);
+    setShowMenu(false);
   };
+
+  const getDisplayTime = () => {
+    if (!item.publicationDate) return "Recently added";
+    if (item.publicationDate.includes("T")) {
+      return item.publicationDate.split("T")[0];
+    }
+    return item.publicationDate;
+  };
+
+  const durationText = item.duration || (item.category === "music" ? "4:12" : "15:20");
+  const viewsText = item.views || "1.8M views";
+  const channelInitial = (item.creator || "O").charAt(0).toUpperCase();
+  const isSavedAny = inWatchlist || inWatchLater;
 
   return (
     <div
-      onClick={() => onSelect(item)}
-      className="card card-hover"
+      onClick={handleCardClick}
+      role="button"
+      tabIndex={0}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          handleCardClick();
+        }
+      }}
+      className="streaming-video-card"
       style={{
-        padding: 0,
-        overflow: "hidden",
         display: "flex",
         flexDirection: "column",
         cursor: "pointer",
         position: "relative",
+        borderRadius: "10px",
+        outline: "none",
+        transition: "transform 0.2s ease, box-shadow 0.2s ease",
       }}
     >
-      {/* Thumbnail Container */}
+      {/* 16:9 Landscape Thumbnail Container */}
       <div
+        className="thumbnail-wrap"
         style={{
           position: "relative",
           width: "100%",
-          paddingTop: item.contentType === "movie" ? "120%" : "56.25%", // 16:9 or 2:3 ratio
+          paddingTop: "56.25%", // 16:9 ratio
           backgroundColor: "var(--bg-subtle)",
+          borderRadius: "10px",
           overflow: "hidden",
+          boxShadow: "0 2px 8px rgba(0, 0, 0, 0.25)",
         }}
       >
         <img
@@ -108,157 +202,290 @@ export function ContentCard({ item, onSelect, onToggleSave }: ContentCardProps) 
             width: "100%",
             height: "100%",
             objectFit: "cover",
-            transition: "transform 0.3s ease",
+            transition: "transform 0.3s cubic-bezier(0.4, 0, 0.2, 1)",
           }}
           onError={(e) => {
-            // Fallback placeholder image
-            (e.target as HTMLImageElement).src = "https://images.unsplash.com/photo-1518770660439-4636190af475?auto=format&fit=crop&w=800&q=80";
+            (e.target as HTMLImageElement).src =
+              "https://images.unsplash.com/photo-1518770660439-4636190af475?auto=format&fit=crop&w=800&q=80";
           }}
         />
 
-        {/* Hover Overlay with Play Icon */}
+        {/* Duration Badge */}
+        {durationText && (
+          <div
+            style={{
+              position: "absolute",
+              bottom: showProgress || item.progressPercent ? "10px" : "8px",
+              right: "8px",
+              padding: "0.2rem 0.45rem",
+              borderRadius: "4px",
+              backgroundColor: "rgba(0, 0, 0, 0.82)",
+              color: "#fff",
+              fontSize: "0.75rem",
+              fontWeight: 600,
+              letterSpacing: "0.02em",
+              pointerEvents: "none",
+            }}
+          >
+            {durationText}
+          </div>
+        )}
+
+        {/* Shorts Indicator */}
+        {item.isShort && (
+          <div
+            style={{
+              position: "absolute",
+              top: "6px",
+              left: "6px",
+              padding: "0.15rem 0.45rem",
+              borderRadius: "4px",
+              backgroundColor: "rgba(220, 38, 38, 0.92)",
+              color: "#fff",
+              fontSize: "0.6875rem",
+              fontWeight: 700,
+              letterSpacing: "0.03em",
+              pointerEvents: "none",
+            }}
+          >
+            Shorts
+          </div>
+        )}
+
+        {/* Viewing Progress Bar */}
+        {(showProgress || (item.progressPercent !== undefined && item.progressPercent > 0)) && (
+          <div
+            style={{
+              position: "absolute",
+              bottom: 0,
+              left: 0,
+              right: 0,
+              height: "4px",
+              backgroundColor: "rgba(255, 255, 255, 0.25)",
+            }}
+          >
+            <div
+              style={{
+                height: "100%",
+                width: `${Math.min(100, Math.max(5, item.progressPercent || 35))}%`,
+                backgroundColor: "#ef4444",
+                borderRadius: "0 2px 2px 0",
+              }}
+            />
+          </div>
+        )}
+      </div>
+
+      {/* Metadata Row */}
+      <div
+        style={{
+          display: "flex",
+          alignItems: "flex-start",
+          gap: "0.75rem",
+          paddingTop: "0.75rem",
+          position: "relative",
+        }}
+      >
+        {/* Channel Avatar */}
         <div
           style={{
-            position: "absolute",
-            inset: 0,
-            backgroundColor: "rgba(0, 0, 0, 0.4)",
+            width: "38px",
+            height: "38px",
+            borderRadius: "50%",
+            overflow: "hidden",
+            flexShrink: 0,
+            marginTop: "2px",
+            backgroundColor: "var(--bg-surface-elevated)",
+            border: "1px solid var(--border-color)",
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
-            opacity: 0,
-            transition: "opacity 0.2s ease",
+            position: "relative",
           }}
-          className="overlay-play"
         >
+          {item.channelAvatar ? (
+            <img
+              src={item.channelAvatar}
+              alt={item.creator ? `${item.creator}'s channel avatar` : "Channel avatar"}
+              loading="lazy"
+              style={{
+                width: "100%",
+                height: "100%",
+                objectFit: "cover",
+                borderRadius: "50%",
+              }}
+              onError={(e) => {
+                e.currentTarget.style.display = "none";
+                const fallback = e.currentTarget.parentElement?.querySelector(".avatar-fallback") as HTMLElement;
+                if (fallback) fallback.style.display = "flex";
+              }}
+            />
+          ) : null}
           <div
+            className="avatar-fallback"
             style={{
-              width: "48px",
-              height: "48px",
+              width: "100%",
+              height: "100%",
               borderRadius: "50%",
-              backgroundColor: "rgba(56, 189, 248, 0.9)",
+              background: "linear-gradient(135deg, #38bdf8, #2563eb)",
               color: "#fff",
-              display: "flex",
+              display: item.channelAvatar ? "none" : "flex",
               alignItems: "center",
               justifyContent: "center",
-              boxShadow: "0 4px 16px rgba(0,0,0,0.4)",
+              fontSize: "0.875rem",
+              fontWeight: 700,
             }}
           >
-            <Play size={22} style={{ marginLeft: "3px" }} />
+            {channelInitial}
           </div>
         </div>
 
-        {/* Badges on Top */}
-        <div
-          style={{
-            position: "absolute",
-            top: "0.625rem",
-            left: "0.625rem",
-            display: "flex",
-            gap: "0.375rem",
-            zIndex: 10,
-          }}
-        >
-          <span className={`badge ${getBadgeClass()}`}>
-            {getProviderIcon()} {item.provider}
-          </span>
-          {item.subcategory && (
-            <span
-              className="badge"
-              style={{
-                backgroundColor: "rgba(0,0,0,0.6)",
-                backdropFilter: "blur(4px)",
-                color: "#f8fafc",
-              }}
-            >
-              {item.subcategory}
-            </span>
-          )}
+        {/* Title & Stats */}
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <h3
+            title={item.title}
+            style={{
+              fontSize: "0.9375rem",
+              fontWeight: 600,
+              lineHeight: 1.4,
+              color: "var(--text-main)",
+              margin: 0,
+              display: "-webkit-box",
+              WebkitLineClamp: 2,
+              WebkitBoxOrient: "vertical",
+              overflow: "hidden",
+              wordBreak: "break-word",
+            }}
+          >
+            {item.title}
+          </h3>
+
+          <p
+            style={{
+              fontSize: "0.8125rem",
+              color: "var(--text-muted)",
+              margin: "0.25rem 0 0",
+              whiteSpace: "nowrap",
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+            }}
+          >
+            {item.creator || "YouTube Creator"}
+          </p>
+
+          <p
+            style={{
+              fontSize: "0.75rem",
+              color: "var(--text-dim)",
+              margin: "0.15rem 0 0",
+            }}
+          >
+            {showProgress || item.progressPercent ? (
+              <span style={{ color: "#f87171", fontWeight: 500 }}>
+                {item.progressPercent || 35}% watched
+              </span>
+            ) : (
+              <span>{viewsText} • {getDisplayTime()}</span>
+            )}
+          </p>
         </div>
 
-        {/* Save to Watchlist Button */}
-        <button
-          type="button"
-          onClick={handleSaveClick}
-          aria-label={isSaved ? "Remove from Watchlist" : "Save to Watchlist"}
-          title={isSaved ? "Saved to Watchlist" : "Add to Watchlist"}
-          style={{
-            position: "absolute",
-            top: "0.625rem",
-            right: "0.625rem",
-            zIndex: 10,
-            width: "34px",
-            height: "34px",
-            borderRadius: "50%",
-            backgroundColor: isSaved ? "var(--accent-amber)" : "rgba(0, 0, 0, 0.65)",
-            color: isSaved ? "#000" : "#fff",
-            border: "none",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            cursor: "pointer",
-            transition: "var(--transition)",
-            backdropFilter: "blur(4px)",
-          }}
-        >
-          {isSaved ? <Check size={16} /> : <Bookmark size={16} />}
-        </button>
-      </div>
+        {/* Action Menu Trigger Button */}
+        <div ref={menuRef} style={{ position: "relative" }}>
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              setShowMenu(!showMenu);
+            }}
+            aria-label="Video actions"
+            className="btn btn-outline btn-sm"
+            style={{
+              padding: "0.25rem",
+              border: "none",
+              background: "transparent",
+              color: isSavedAny ? "var(--primary)" : "var(--text-dim)",
+              borderRadius: "4px",
+            }}
+          >
+            {isSavedAny ? <Check size={16} /> : <MoreVertical size={16} />}
+          </button>
 
-      {/* Card Info */}
-      <div style={{ padding: "1rem", display: "flex", flexDirection: "column", flex: 1, gap: "0.5rem" }}>
-        <h3
-          style={{
-            fontSize: "0.9375rem",
-            fontWeight: 600,
-            lineHeight: 1.4,
-            display: "-webkit-box",
-            WebkitLineClamp: 2,
-            WebkitBoxOrient: "vertical",
-            overflow: "hidden",
-            color: "var(--text-main)",
-          }}
-        >
-          {item.title}
-        </h3>
+          {/* Contextual Action Menu: Watchlist & Watch Later */}
+          {showMenu && (
+            <div
+              style={{
+                position: "absolute",
+                top: "100%",
+                right: 0,
+                zIndex: 40,
+                backgroundColor: "var(--bg-surface)",
+                border: "1px solid var(--border-color)",
+                borderRadius: "var(--radius-md)",
+                boxShadow: "0 6px 20px rgba(0,0,0,0.45)",
+                padding: "0.375rem",
+                minWidth: "165px",
+                display: "flex",
+                flexDirection: "column",
+                gap: "0.25rem",
+              }}
+            >
+              <button
+                type="button"
+                onClick={handleToggleWatchlist}
+                style={{
+                  width: "100%",
+                  textAlign: "left",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "0.5rem",
+                  padding: "0.45rem 0.5rem",
+                  fontSize: "0.75rem",
+                  backgroundColor: "transparent",
+                  border: "none",
+                  color: inWatchlist ? "var(--primary)" : "var(--text-main)",
+                  borderRadius: "var(--radius-sm)",
+                  cursor: "pointer",
+                  fontWeight: inWatchlist ? 600 : 500,
+                }}
+              >
+                {inWatchlist ? <Check size={14} /> : <Bookmark size={14} />}
+                <span>{inWatchlist ? "In Watchlist" : "Add to Watchlist"}</span>
+              </button>
 
-        <p
-          style={{
-            fontSize: "0.8125rem",
-            color: "var(--text-muted)",
-            display: "-webkit-box",
-            WebkitLineClamp: 2,
-            WebkitBoxOrient: "vertical",
-            overflow: "hidden",
-            lineHeight: 1.5,
-          }}
-        >
-          {item.description}
-        </p>
-
-        <div
-          style={{
-            marginTop: "auto",
-            paddingTop: "0.625rem",
-            borderTop: "1px solid var(--border-color)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
-            fontSize: "0.75rem",
-            color: "var(--text-dim)",
-          }}
-        >
-          <span style={{ fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: "65%" }}>
-            {item.creator || item.providerAttribution}
-          </span>
-          {item.publicationDate && (
-            <span>{item.publicationDate.slice(0, 4)}</span>
+              <button
+                type="button"
+                onClick={handleToggleWatchLater}
+                style={{
+                  width: "100%",
+                  textAlign: "left",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "0.5rem",
+                  padding: "0.45rem 0.5rem",
+                  fontSize: "0.75rem",
+                  backgroundColor: "transparent",
+                  border: "none",
+                  color: inWatchLater ? "var(--primary)" : "var(--text-main)",
+                  borderRadius: "var(--radius-sm)",
+                  cursor: "pointer",
+                  fontWeight: inWatchLater ? 600 : 500,
+                }}
+              >
+                {inWatchLater ? <Check size={14} /> : <Clock size={14} />}
+                <span>{inWatchLater ? "In Watch Later" : "Watch Later"}</span>
+              </button>
+            </div>
           )}
         </div>
       </div>
 
       <style jsx>{`
-        .card-hover:hover .overlay-play {
-          opacity: 1 !important;
+        .streaming-video-card:hover .thumbnail-wrap img {
+          transform: scale(1.04);
+        }
+        .streaming-video-card:focus-visible {
+          box-shadow: 0 0 0 2px var(--primary);
         }
       `}</style>
     </div>

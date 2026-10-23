@@ -147,6 +147,27 @@ function initSchema(db: DatabaseSync) {
     CREATE INDEX IF NOT EXISTS idx_search_history_user ON search_history(user_id);
     CREATE INDEX IF NOT EXISTS idx_search_history_query ON search_history(user_id, query);
 
+    -- Watch History & Playback Progress (Continue Watching)
+    CREATE TABLE IF NOT EXISTS watch_history (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      content_id TEXT NOT NULL,
+      provider TEXT NOT NULL DEFAULT 'youtube',
+      title TEXT NOT NULL,
+      channel_name TEXT,
+      thumbnail_url TEXT,
+      duration_seconds INTEGER DEFAULT 0,
+      progress_seconds INTEGER NOT NULL DEFAULT 0,
+      progress_percent INTEGER NOT NULL DEFAULT 0,
+      completed INTEGER NOT NULL DEFAULT 0,
+      updated_at INTEGER NOT NULL,
+      UNIQUE(user_id, provider, content_id),
+      FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_watch_history_user ON watch_history(user_id);
+    CREATE INDEX IF NOT EXISTS idx_watch_history_updated ON watch_history(user_id, updated_at DESC);
+
     -- Security Audit Log
     CREATE TABLE IF NOT EXISTS security_logs (
       id TEXT PRIMARY KEY,
@@ -159,5 +180,28 @@ function initSchema(db: DatabaseSync) {
     );
 
     CREATE INDEX IF NOT EXISTS idx_security_logs_user ON security_logs(user_id);
+
+    -- OAuth Connections (Encrypted tokens for connected accounts such as YouTube)
+    CREATE TABLE IF NOT EXISTS oauth_connections (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      provider TEXT NOT NULL, -- e.g. 'youtube', 'google'
+      encrypted_access_token TEXT NOT NULL,
+      iv TEXT NOT NULL,
+      auth_tag TEXT NOT NULL,
+      encrypted_refresh_token TEXT,
+      refresh_iv TEXT,
+      refresh_auth_tag TEXT,
+      expires_at INTEGER,
+      scope TEXT,
+      channel_id TEXT,
+      channel_title TEXT,
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL,
+      UNIQUE(user_id, provider),
+      FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_oauth_connections_user ON oauth_connections(user_id);
   `);
 }

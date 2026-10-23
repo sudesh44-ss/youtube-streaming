@@ -65,6 +65,10 @@ export class TMDBAdapter implements IProviderAdapter {
   }
 
   async search(filters: SearchFilters, apiKey?: string): Promise<NormalizedContentItem[]> {
+    if (filters.videoType === "shorts") {
+      return []; // TMDB catalog does not supply YouTube Shorts
+    }
+
     const query = filters.query?.trim() || "";
 
     if (apiKey && apiKey.trim().length > 20) {

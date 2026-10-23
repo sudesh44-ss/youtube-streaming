@@ -1,9 +1,18 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getDb } from "@/lib/db";
 import { hashPassword, validatePasswordStrength, logSecurityEvent } from "@/lib/auth";
+import { hashToken } from "@/lib/crypto";
+import { checkRateLimit, getClientIp, rateLimitExceededResponse, RATE_LIMIT_POLICIES } from "@/lib/rate-limit";
 
 export async function POST(req: NextRequest) {
   try {
+    const ip = getClientIp(req);
+    const rateCheck = await checkRateLimit(ip, RATE_LIMIT_POLICIES.PASSWORD_RESET);
+    if (!rateCheck.success) {
+      logSecurityEvent(null, "RATE_LIMIT_EXCEEDED", `Password reset rate limit exceeded for ${ip}`);
+      return rateLimitExceededResponse(rateCheck);
+    }
+
     const { token, newPassword, confirmPassword } = await req.json();
 
     if (!token) {
@@ -21,10 +30,12 @@ export async function POST(req: NextRequest) {
 
     const db = getDb();
     const now = Date.now();
+    const tokenHash = hashToken(token.trim());
+
     const user = db.prepare(`
       SELECT id FROM users
       WHERE reset_token = ? AND reset_token_expires > ?
-    `).get(token, now) as any;
+    `).get(tokenHash, now) as any;
 
     if (!user) {
       return NextResponse.json({ error: "Invalid or expired reset token." }, { status: 400 });
@@ -41,7 +52,7 @@ export async function POST(req: NextRequest) {
     // Invalidate existing sessions for security
     db.prepare("DELETE FROM sessions WHERE user_id = ?").run(user.id);
 
-    logSecurityEvent(user.id, "PASSWORD_RESET_SUCCESS", "Password reset with valid token");
+    logSecurityEvent(user.id, "PASSWORD_RESET_SUCCESS", "Password reset with hashed token");
 
     return NextResponse.json({
       success: true,

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { Search, X, Clock } from "lucide-react";
+import { Search, X, Clock, RefreshCw } from "lucide-react";
 
 interface SearchBarProps {
   value: string;
@@ -9,6 +9,7 @@ interface SearchBarProps {
   onSearch: (query: string) => void;
   categoryName?: string;
   isCategoryMode: boolean;
+  loading?: boolean;
 }
 
 export function SearchBar({
@@ -17,6 +18,7 @@ export function SearchBar({
   onSearch,
   categoryName,
   isCategoryMode,
+  loading = false,
 }: SearchBarProps) {
   const [history, setHistory] = useState<string[]>([]);
   const [showHistory, setShowHistory] = useState(false);
@@ -49,9 +51,18 @@ export function SearchBar({
     onSearch("");
   };
 
+  const handleSubmit = () => {
+    if (loading) return;
+    const trimmed = value.trim();
+    if (!trimmed) return;
+    setShowHistory(false);
+    onSearch(trimmed);
+  };
+
   const handleSelectHistory = (query: string) => {
-    onChange(query);
-    onSearch(query);
+    const trimmed = query.trim();
+    onChange(trimmed);
+    onSearch(trimmed);
     setShowHistory(false);
   };
 
@@ -85,8 +96,8 @@ export function SearchBar({
           onFocus={() => setShowHistory(true)}
           onKeyDown={(e) => {
             if (e.key === "Enter") {
-              setShowHistory(false);
-              onSearch(value);
+              e.preventDefault();
+              handleSubmit();
             }
           }}
           placeholder={placeholder}
@@ -114,13 +125,19 @@ export function SearchBar({
 
         <button
           type="button"
-          onClick={() => {
-            setShowHistory(false);
-            onSearch(value);
-          }}
+          onClick={handleSubmit}
+          disabled={loading || !value.trim()}
           className="btn btn-primary btn-sm"
+          style={{ minWidth: "85px", display: "inline-flex", alignItems: "center", justifyContent: "center", gap: "0.35rem" }}
         >
-          Search
+          {loading ? (
+            <>
+              <RefreshCw size={13} className="spin" />
+              <span>Searching</span>
+            </>
+          ) : (
+            <span>Search</span>
+          )}
         </button>
       </div>
 

@@ -7,11 +7,12 @@ export interface RecommendationOptions {
   category?: string;
   subcategory?: string;
   mode: BrowsingMode;
+  videoType?: "all" | "shorts" | "videos";
   limit?: number;
 }
 
 export async function getRecommendedContent(options: RecommendationOptions): Promise<NormalizedContentItem[]> {
-  const { userId, category, subcategory, mode, limit = 16 } = options;
+  const { userId, category, subcategory, mode, videoType, limit = 16 } = options;
 
   // 1. Fetch raw items from providers
   const items = await queryUnifiedContent(
@@ -19,6 +20,7 @@ export async function getRecommendedContent(options: RecommendationOptions): Pro
       category,
       subcategory,
       mode,
+      videoType,
       limit: 40,
     },
     userId

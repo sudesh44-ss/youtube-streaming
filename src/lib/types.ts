@@ -28,9 +28,9 @@ export const CATEGORIES: CategoryDefinition[] = [
   },
   {
     id: "music",
-    name: "Music",
+    name: "Music & Audio",
     icon: "Music",
-    description: "Tracks, curated playlists, lo-fi beats, classical, and world music",
+    description: "Official music videos, performances, lo-fi beats, instrumental, and curated playlists via YouTube",
     subcategories: [
       "Lo-fi",
       "Classical",
@@ -40,7 +40,7 @@ export const CATEGORIES: CategoryDefinition[] = [
       "Rock",
       "Workout Music",
     ],
-    providerTypes: ["youtube", "spotify"],
+    providerTypes: ["youtube"],
   },
   {
     id: "movies",
@@ -57,6 +57,20 @@ export const CATEGORIES: CategoryDefinition[] = [
       "Animation",
     ],
     providerTypes: ["tmdb", "youtube"],
+  },
+  {
+    id: "comedy",
+    name: "Comedy",
+    icon: "Laugh",
+    description: "Stand-up specials, sketch comedy, funny clips, and satirical parodies",
+    subcategories: [
+      "Stand-up",
+      "Sketches",
+      "Sitcom Clips",
+      "Parody",
+      "Improv",
+    ],
+    providerTypes: ["youtube"],
   },
   {
     id: "technology",
@@ -149,6 +163,11 @@ export interface NormalizedContentItem {
   availabilityStatus: "available" | "preview_only" | "external_only";
   score?: number; // recommendation score
   saved?: boolean;
+  duration?: string; // e.g. "14:08" or "18:24"
+  views?: string; // e.g. "2.4M views"
+  progressPercent?: number; // 0 - 100 for Continue Watching progress bar
+  channelAvatar?: string; // avatar image url
+  isShort?: boolean; // YouTube Short flag
 }
 
 export interface ProviderStatus {
@@ -187,6 +206,20 @@ export interface UserSession {
   };
 }
 
+export interface YouTubeChannelItem {
+  id: string; // channelId, e.g. "UC_x5XG1OV2P6uZZ5FSM9Ttw"
+  title: string;
+  description: string;
+  customUrl?: string; // handle, e.g. "@mkbhd"
+  avatar: string;
+  subscriberCount?: string; // e.g. "18.5M subscribers"
+  subscriberCountRaw?: number;
+  videoCount?: string;
+  subscriptionStatus: "subscribed" | "not_subscribed" | "unknown";
+  subscriptionId?: string;
+  channelUrl: string;
+}
+
 export interface SearchFilters {
   query?: string;
   category?: string;
@@ -194,6 +227,8 @@ export interface SearchFilters {
   mode: BrowsingMode;
   language?: string;
   contentType?: string;
+  videoType?: "all" | "shorts" | "videos";
   sortBy?: "relevance" | "date" | "title";
   limit?: number;
+  pageToken?: string;
 }

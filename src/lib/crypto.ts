@@ -7,10 +7,33 @@ const CURRENT_KEY_VERSION = 1;
 
 /**
  * Derives a 32-byte key from environment master secret using HKDF.
- * Master secret can be provided via CREDENTIAL_ENCRYPTION_KEY or a secure fallback.
+ * Enforces server-only ENCRYPTION_SECRET without insecure production fallbacks.
  */
 function getMasterKey(): Buffer {
-  const secret = process.env.CREDENTIAL_ENCRYPTION_KEY || "content-discovery-platform-master-key-change-in-prod-32b!";
+  const secret = process.env.ENCRYPTION_SECRET || process.env.CREDENTIAL_ENCRYPTION_KEY;
+
+  if (!secret) {
+    if (process.env.NODE_ENV === "production") {
+      throw new Error(
+        "CRITICAL: ENCRYPTION_SECRET environment variable is missing. Provider credentials cannot be accessed safely."
+      );
+    }
+    // Controlled development fallback strictly outside production
+    return Buffer.from(
+      crypto.hkdfSync(
+        "sha256",
+        Buffer.from("omnidiscover-dev-only-secret-key-32-chars!!", "utf-8"),
+        Buffer.from("discovery-salt-2026", "utf-8"),
+        Buffer.from("api-credentials-v1", "utf-8"),
+        32
+      )
+    );
+  }
+
+  if (secret.length < 32) {
+    throw new Error("ENCRYPTION_SECRET must be at least 32 characters long for AES-256 security.");
+  }
+
   const derived = crypto.hkdfSync(
     "sha256",
     Buffer.from(secret, "utf-8"),

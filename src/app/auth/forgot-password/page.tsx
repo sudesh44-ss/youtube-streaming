@@ -2,14 +2,13 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { Mail, AlertCircle, CheckCircle2, ArrowRight } from "lucide-react";
+import { Mail, AlertCircle, CheckCircle2 } from "lucide-react";
 
 export default function ForgotPasswordPage() {
   const [email, setEmail] = useState("");
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [resetToken, setResetToken] = useState<string | null>(null);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -28,10 +27,7 @@ export default function ForgotPasswordPage() {
       if (!res.ok) {
         setError(data.error || "Failed to submit request.");
       } else {
-        setMessage(data.message || "Reset instructions have been generated.");
-        if (data.resetToken) {
-          setResetToken(data.resetToken);
-        }
+        setMessage(data.message || "Password reset instructions have been sent.");
       }
     } catch {
       setError("Network error occurred.");
@@ -111,27 +107,13 @@ export default function ForgotPasswordPage() {
               color: "var(--accent-emerald)",
               fontSize: "0.875rem",
               display: "flex",
-              flexDirection: "column",
+              alignItems: "center",
               gap: "0.5rem",
               marginBottom: "1.25rem",
             }}
           >
-            <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
-              <CheckCircle2 size={16} />
-              <span>{message}</span>
-            </div>
-            {resetToken && (
-              <div style={{ marginTop: "0.5rem", paddingTop: "0.5rem", borderTop: "1px solid rgba(16, 185, 129, 0.2)" }}>
-                <span style={{ fontSize: "0.75rem", color: "var(--text-main)" }}>Direct Demo Reset Link:</span>
-                <Link
-                  href={`/auth/reset-password?token=${resetToken}`}
-                  className="btn btn-primary btn-sm"
-                  style={{ display: "flex", marginTop: "0.375rem", justifyContent: "center" }}
-                >
-                  Proceed to Reset Password <ArrowRight size={14} />
-                </Link>
-              </div>
-            )}
+            <CheckCircle2 size={16} />
+            <span>{message}</span>
           </div>
         )}
 

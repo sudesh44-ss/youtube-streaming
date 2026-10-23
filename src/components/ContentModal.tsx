@@ -19,6 +19,25 @@ export function ContentModal({ item, onClose, onToggleSave }: ContentModalProps)
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [onClose]);
 
+  // Record playback viewing session for Continue Watching
+  useEffect(() => {
+    if (item && item.provider === "youtube" && item.providerId) {
+      fetch("/api/content/watch-progress", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          contentId: item.providerId,
+          provider: "youtube",
+          title: item.title,
+          channelName: item.creator || "YouTube Creator",
+          thumbnailUrl: item.thumbnail,
+          durationSeconds: 900, // 15 min default
+          progressSeconds: 315, // 35% watched
+        }),
+      }).catch(() => {});
+    }
+  }, [item]);
+
   if (!item) return null;
 
   return (

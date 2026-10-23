@@ -3,6 +3,7 @@ import { cookies } from "next/headers";
 import { getDb } from "./db";
 import { hashToken } from "./crypto";
 import { UserSession, BrowsingMode } from "./types";
+import { isSupabaseServerConfigured, createServerSupabaseClient } from "./supabase/server";
 
 const SESSION_COOKIE = "platform_session";
 const SESSION_TTL_DAYS = 30;
@@ -55,14 +56,21 @@ export function createSession(userId: string, userAgent?: string, ipAddress?: st
 }
 
 export async function setSessionCookie(rawToken: string) {
-  const cookieStore = await cookies();
-  cookieStore.set(SESSION_COOKIE, rawToken, {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
-    sameSite: "lax",
-    path: "/",
-    maxAge: SESSION_TTL_DAYS * 24 * 60 * 60,
-  });
+  try {
+    const cookieStore = await cookies();
+    cookieStore.set(SESSION_COOKIE, rawToken, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "lax",
+      path: "/",
+      maxAge: SESSION_TTL_DAYS * 24 * 60 * 60,
+    });
+  } catch (err: any) {
+    if (err?.message?.includes("outside a request scope") || err?.digest?.includes("DYNAMIC_SERVER_USAGE")) {
+      return;
+    }
+    throw err;
+  }
 }
 
 export async function clearSessionCookie() {
@@ -74,12 +82,63 @@ export async function clearSessionCookie() {
     db.prepare("DELETE FROM sessions WHERE token_hash = ?").run(tokenHash);
   }
   cookieStore.delete(SESSION_COOKIE);
+
+  if (isSupabaseServerConfigured()) {
+    try {
+      const supabase = await createServerSupabaseClient();
+      await supabase.auth.signOut();
+    } catch {
+      // Graceful logout
+    }
+  }
 }
 
 export async function getCurrentSession(): Promise<UserSession | null> {
   const cookieStore = await cookies();
   const rawToken = cookieStore.get(SESSION_COOKIE)?.value;
-  if (!rawToken) return null;
+
+  if (!rawToken) {
+    // If no SQLite session cookie is present, bridge to Supabase Auth if configured
+    if (isSupabaseServerConfigured()) {
+      try {
+        const supabase = await createServerSupabaseClient();
+        const { data: { user: sbUser }, error: sbErr } = await supabase.auth.getUser();
+        if (sbUser && !sbErr) {
+          const { data: prefData } = await supabase
+            .from("user_preferences")
+            .select("*")
+            .eq("user_id", sbUser.id)
+            .maybeSingle();
+
+          return {
+            user: {
+              id: sbUser.id,
+              email: sbUser.email || "",
+              name: (sbUser.user_metadata?.name || sbUser.user_metadata?.full_name || sbUser.email?.split("@")[0] || "User"),
+              emailVerified: Boolean(sbUser.email_confirmed_at),
+              createdAt: new Date(sbUser.created_at).getTime(),
+            },
+            preferences: {
+              defaultMode: (prefData?.default_mode as BrowsingMode) || "normal",
+              preferredCategories: prefData?.preferred_categories || ["technology", "music"],
+              preferredLanguages: prefData?.preferred_languages || ["en"],
+              theme: prefData?.theme || "system",
+              layoutDensity: prefData?.layout_density || "comfortable",
+              reducedMotion: Boolean(prefData?.reduced_motion),
+              highContrast: Boolean(prefData?.high_contrast),
+              fontScale: prefData?.font_scale || "medium",
+              emailAlerts: prefData?.email_alerts !== false,
+              securityAlerts: prefData?.security_alerts !== false,
+              inAppNotifications: prefData?.in_app_notifications !== false,
+            },
+          };
+        }
+      } catch {
+        // Fall through to null session
+      }
+    }
+    return null;
+  }
 
   try {
     const tokenHash = hashToken(rawToken);

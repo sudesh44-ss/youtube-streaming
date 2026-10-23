@@ -3,7 +3,8 @@
 import { useState } from "react";
 import Link from "next/link";
 import { ProviderStatus } from "@/lib/types";
-import { Video, Film, Music, CheckCircle2, AlertCircle, RefreshCw, Unlink, Key, Eye, EyeOff, BookOpen } from "lucide-react";
+import { Video, Film, Music, CheckCircle2, AlertCircle, RefreshCw, Unlink, Key, Eye, EyeOff, BookOpen, Lock } from "lucide-react";
+import { YouTubeConnectionPopup } from "./YouTubeConnectionPopup";
 
 interface ProviderCardProps {
   provider: ProviderStatus;
@@ -16,6 +17,7 @@ export function ProviderCard({ provider, onRefresh }: ProviderCardProps) {
   const [showKey, setShowKey] = useState(false);
   const [loading, setLoading] = useState(false);
   const [testResult, setTestResult] = useState<{ success: boolean; message: string } | null>(null);
+  const [showYtPopup, setShowYtPopup] = useState(false);
 
   const getIcon = () => {
     switch (provider.id) {
@@ -96,6 +98,9 @@ export function ProviderCard({ provider, onRefresh }: ProviderCardProps) {
         setIsEditing(false);
         setApiKeyInput("");
         onRefresh();
+        if (provider.id === "youtube") {
+          setShowYtPopup(true);
+        }
       }
     } catch {
       setTestResult({ success: false, message: "Failed to connect provider. Please check network." });
@@ -163,30 +168,49 @@ export function ProviderCard({ provider, onRefresh }: ProviderCardProps) {
         {provider.description}
       </p>
 
-      {/* Connection Info */}
-      {provider.status === "connected" && (
-        <div
-          style={{
-            padding: "0.75rem 1rem",
-            backgroundColor: "var(--bg-surface-elevated)",
-            borderRadius: "var(--radius-md)",
-            border: "1px solid var(--border-color)",
-            fontSize: "0.8125rem",
-            display: "flex",
-            flexDirection: "column",
-            gap: "0.375rem",
-          }}
-        >
-          <div style={{ display: "flex", justifyContent: "space-between" }}>
-            <span style={{ color: "var(--text-dim)" }}>Stored Secret:</span>
-            <code style={{ color: "var(--text-main)", fontFamily: "monospace" }}>{provider.maskedKey}</code>
-          </div>
-          {provider.lastValidatedAt && (
-            <div style={{ display: "flex", justifyContent: "space-between" }}>
-              <span style={{ color: "var(--text-dim)" }}>Last Validated:</span>
-              <span>{new Date(provider.lastValidatedAt).toLocaleString()}</span>
+      {/* Connection Info & Locked Input View */}
+      {provider.status === "connected" && !isEditing && (
+        <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+          <label className="label" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 0 }}>
+            <span>Active {provider.name} {provider.requiredCredential}:</span>
+            <span style={{ fontSize: "0.75rem", color: "var(--accent-emerald)", display: "flex", alignItems: "center", gap: "0.25rem", fontWeight: 600 }}>
+              <Lock size={12} /> Locked &amp; Encrypted (AES-256-GCM)
+            </span>
+          </label>
+          <div style={{ position: "relative" }}>
+            <input
+              type="text"
+              className="input"
+              value={provider.maskedKey || "••••••••••••••••"}
+              disabled
+              readOnly
+              style={{
+                backgroundColor: "var(--bg-surface-elevated)",
+                color: "var(--text-main)",
+                cursor: "not-allowed",
+                fontFamily: "monospace",
+                letterSpacing: "0.05em",
+                paddingRight: "2.5rem",
+                opacity: 0.9,
+              }}
+            />
+            <div
+              style={{
+                position: "absolute",
+                right: "0.75rem",
+                top: "50%",
+                transform: "translateY(-50%)",
+                color: "var(--text-dim)",
+              }}
+              title="API key is securely locked and protected"
+            >
+              <Lock size={16} />
             </div>
-          )}
+          </div>
+          <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.75rem", color: "var(--text-dim)" }}>
+            <span>Last Validated: {provider.lastValidatedAt ? new Date(provider.lastValidatedAt).toLocaleString() : "Verified"}</span>
+            <span>Server-side HKDF derived AES-256</span>
+          </div>
         </div>
       )}
 
@@ -323,6 +347,12 @@ export function ProviderCard({ provider, onRefresh }: ProviderCardProps) {
           </div>
         </div>
       )}
+
+      {/* Floating prompt to connect YouTube account after API key save */}
+      <YouTubeConnectionPopup
+        isOpen={showYtPopup}
+        onClose={() => setShowYtPopup(false)}
+      />
     </div>
   );
 }
