@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
-import crypto from "node:crypto";
 import { getCurrentSession } from "@/lib/auth";
-import { queryUnifiedContentWithPagination, getUserProviderKey } from "@/lib/providers";
+import { queryUnifiedContentWithPagination } from "@/lib/providers";
+import { getUserProviderKeyAsync, recordSearchHistory } from "@/lib/data-service";
 import { YouTubeAdapter } from "@/lib/providers/youtube";
 import { getDb } from "@/lib/db";
 import { decryptSecret } from "@/lib/crypto";
@@ -29,7 +29,7 @@ export async function GET(req: NextRequest) {
     const limit = Math.min(parseInt(searchParams.get("limit") || "20", 10), 20);
     const pageToken = searchParams.get("pageToken") || undefined;
 
-    const apiKey = getUserProviderKey(session?.user?.id, "youtube") || undefined;
+    const apiKey = (await getUserProviderKeyAsync(session?.user?.id, "youtube")) || undefined;
 
     // Strict Requirement: Search MUST remain blank until a valid YouTube API key is saved.
     // Do not return placeholder videos, demo cards, or mock channels when no key exists.
@@ -51,16 +51,7 @@ export async function GET(req: NextRequest) {
 
     // Save search history if query is provided and user is authenticated
     if (session && query.trim().length > 1 && !pageToken) {
-      try {
-        const db = getDb();
-        const historyId = crypto.randomUUID();
-        db.prepare(`
-          INSERT INTO search_history (id, user_id, query, category, mode, searched_at)
-          VALUES (?, ?, ?, ?, ?, ?)
-        `).run(historyId, session.user.id, query.trim(), category || null, mode, Date.now());
-      } catch (e) {
-        console.warn("Failed to record search history:", e);
-      }
+      recordSearchHistory(session.user.id, query.trim(), category || null, mode).catch(() => {});
     }
 
     // Retrieve user's decrypted YouTube OAuth access token if available
@@ -100,7 +91,6 @@ export async function GET(req: NextRequest) {
     let channels: YouTubeChannelItem[] = [];
     if (query.trim().length > 0 && !pageToken) {
       try {
-        const apiKey = getUserProviderKey(session?.user?.id, "youtube") || undefined;
         const ytAdapter = new YouTubeAdapter();
         channels = await ytAdapter.searchChannels(query.trim(), apiKey, userAccessToken);
       } catch (err) {

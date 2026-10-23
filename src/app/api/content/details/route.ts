@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getCurrentSession } from "@/lib/auth";
-import { getUserProviderKey } from "@/lib/providers";
+import { getUserProviderKeyAsync } from "@/lib/data-service";
 import { CURATED_CATALOG } from "@/lib/providers/curated-data";
 
 export interface VideoDetailResponse {
@@ -72,7 +72,7 @@ export async function GET(req: NextRequest) {
 
     // 2. Fetch live metadata from YouTube Data API v3 if API key is available
     const session = await getCurrentSession();
-    const apiKey = getUserProviderKey(session?.user?.id, "youtube");
+    const apiKey = await getUserProviderKeyAsync(session?.user?.id, "youtube");
 
     if (apiKey && apiKey.trim().length > 20) {
       try {

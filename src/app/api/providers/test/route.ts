@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getCurrentSession } from "@/lib/auth";
-import { getAdapter, getUserProviderKey } from "@/lib/providers";
+import { getAdapter } from "@/lib/providers";
+import { getUserProviderKeyAsync } from "@/lib/data-service";
 import { checkRateLimit, getClientIp, rateLimitExceededResponse, RATE_LIMIT_POLICIES } from "@/lib/rate-limit";
 
 export async function POST(req: NextRequest) {
@@ -27,10 +28,10 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Unsupported provider." }, { status: 404 });
     }
 
-    // Use passed raw key, or fetch saved decrypted key
+    // Use passed raw key, or fetch saved decrypted key from Supabase/SQLite
     let keyToTest = apiKey;
     if (!keyToTest) {
-      keyToTest = getUserProviderKey(session.user.id, providerId);
+      keyToTest = await getUserProviderKeyAsync(session.user.id, providerId);
     }
 
     if (!keyToTest) {

@@ -17,6 +17,7 @@ export default function WatchHistoryPage() {
   const [history, setHistory] = useState<WatchHistoryItem[]>([]);
   const [mounted, setMounted] = useState(false);
   const [showClearModal, setShowClearModal] = useState(false);
+  const [currentTime, setCurrentTime] = useState<number>(0);
 
   const loadHistory = () => {
     setHistory(getWatchHistory());
@@ -24,6 +25,7 @@ export default function WatchHistoryPage() {
 
   useEffect(() => {
     setMounted(true);
+    setCurrentTime(Date.now());
     loadHistory();
 
     const handleStorageChange = (e: any) => {
@@ -58,7 +60,8 @@ export default function WatchHistoryPage() {
 
   const formatWatchedTime = (timestamp: number) => {
     try {
-      const diffSec = Math.floor((Date.now() - timestamp) / 1000);
+      const baseTime = currentTime || timestamp;
+      const diffSec = Math.floor((baseTime - timestamp) / 1000);
       if (diffSec < 60) return "Just now";
       const diffMin = Math.floor(diffSec / 60);
       if (diffMin < 60) return `${diffMin}m ago`;

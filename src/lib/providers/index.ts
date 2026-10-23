@@ -4,6 +4,9 @@ import { TMDBAdapter } from "./tmdb";
 import { NormalizedContentItem, SearchFilters, ProviderStatus, CATEGORIES } from "../types";
 import { getDb } from "../db";
 import { decryptSecret } from "../crypto";
+import { getUserProviderKeyAsync, getProviderStatusListAsync, DEFAULT_PROVIDERS } from "../data-service";
+
+export { getUserProviderKeyAsync, getProviderStatusListAsync };
 
 const adapters: Record<string, IProviderAdapter> = {
   youtube: new YouTubeAdapter(),
@@ -32,8 +35,8 @@ export function getUserProviderKey(userId: string | undefined, providerId: strin
         return decryptSecret(row.encrypted_secret, row.iv, row.auth_tag);
       }
     }
-  } catch (err) {
-    console.error(`Failed to retrieve decrypted credential for ${providerId}:`, err);
+  } catch {
+    // Non-fatal SQLite lookup warning
   }
 
   // Preserve global environment fallback support
@@ -52,45 +55,23 @@ export function getUserProviderKey(userId: string | undefined, providerId: strin
  * Never exposes the plaintext credentials.
  */
 export function getProviderStatusList(userId: string): ProviderStatus[] {
-  const db = getDb();
-  const rows = db.prepare(`
-    SELECT provider_id, status, masked_key, last_validated_at, last_error
-    FROM provider_credentials
-    WHERE user_id = ?
-  `).all(userId) as any[];
-
   const credsMap = new Map<string, any>();
-  for (const r of rows) {
-    credsMap.set(r.provider_id, r);
+  try {
+    const db = getDb();
+    const rows = db.prepare(`
+      SELECT provider_id, status, masked_key, last_validated_at, last_error
+      FROM provider_credentials
+      WHERE user_id = ?
+    `).all(userId) as any[];
+
+    for (const r of rows) {
+      credsMap.set(r.provider_id, r);
+    }
+  } catch {
+    // Non-fatal
   }
 
-  const providers: {
-    id: "youtube" | "tmdb";
-    name: string;
-    logo: string;
-    description: string;
-    requiredCredential: "API Key";
-    setupGuideUrl: string;
-  }[] = [
-    {
-      id: "youtube",
-      name: "YouTube Data API v3",
-      logo: "Video",
-      description: "Enables live video search, playlist discovery, educational lecture streaming, music tracks, and verified playback metadata.",
-      requiredCredential: "API Key",
-      setupGuideUrl: "/help/connecting-youtube",
-    },
-    {
-      id: "tmdb",
-      name: "The Movie Database (TMDB)",
-      logo: "Film",
-      description: "Powers cinematic movie catalogs, ratings, posters, genres, actor overviews, and official trailer previews.",
-      requiredCredential: "API Key",
-      setupGuideUrl: "/help/connecting-tmdb",
-    },
-  ];
-
-  return providers.map((p) => {
+  return DEFAULT_PROVIDERS.map((p) => {
     const record = credsMap.get(p.id);
     return {
       id: p.id,
@@ -98,11 +79,11 @@ export function getProviderStatusList(userId: string): ProviderStatus[] {
       logo: p.logo,
       description: p.description,
       requiredCredential: p.requiredCredential,
-      status: record?.status || "not_connected",
-      lastValidatedAt: record?.last_validated_at || undefined,
-      maskedKey: record?.masked_key || undefined,
-      errorMessage: record?.last_error || undefined,
       setupGuideUrl: p.setupGuideUrl,
+      status: (record?.status as any) || "not_connected",
+      maskedKey: record?.masked_key || undefined,
+      lastValidatedAt: record?.last_validated_at,
+      lastError: record?.last_error || undefined,
     };
   });
 }
@@ -134,7 +115,7 @@ export async function queryUnifiedContentWithPagination(
   const resultsArrays = await Promise.all(
     activeAdapters.map(async (adapter) => {
       try {
-        const key = getUserProviderKey(userId, adapter.id);
+        const key = await getUserProviderKeyAsync(userId, adapter.id);
         if (adapter.id === "youtube" && "searchWithPagination" in adapter) {
           const paginated = await (adapter as any).searchWithPagination(filters, key || undefined);
           if (paginated.nextPageToken) {

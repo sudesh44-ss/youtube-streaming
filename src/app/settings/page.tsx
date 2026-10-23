@@ -35,7 +35,28 @@ export default function SettingsPage() {
   const [activeTab, setActiveTab] = useState<SettingsTab>("connections");
   const [user, setUser] = useState<any>(null);
   const [preferences, setPreferences] = useState<any>(null);
-  const [providers, setProviders] = useState<ProviderStatus[]>([]);
+  const [providers, setProviders] = useState<ProviderStatus[]>([
+    {
+      id: "youtube",
+      name: "YouTube Data API v3",
+      logo: "Video",
+      description:
+        "Enables live video search, playlist discovery, educational lecture streaming, music tracks, and verified playback metadata.",
+      requiredCredential: "API Key",
+      setupGuideUrl: "/help/connecting-youtube",
+      status: "not_connected",
+    },
+    {
+      id: "tmdb",
+      name: "The Movie Database (TMDB)",
+      logo: "Film",
+      description:
+        "Powers cinematic movie catalogs, ratings, posters, genres, actor overviews, and official trailer previews.",
+      requiredCredential: "API Key",
+      setupGuideUrl: "/help/connecting-tmdb",
+      status: "not_connected",
+    },
+  ]);
   const [loading, setLoading] = useState(true);
   const [statusMessage, setStatusMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
 
@@ -74,7 +95,9 @@ export default function SettingsPage() {
 
       if (provRes.ok) {
         const provData = await provRes.json();
-        setProviders(provData.providers || []);
+        if (Array.isArray(provData.providers) && provData.providers.length > 0) {
+          setProviders(provData.providers);
+        }
       }
     } catch (err) {
       console.error("Settings load error:", err);

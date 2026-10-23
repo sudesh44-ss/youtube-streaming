@@ -1,19 +1,48 @@
 import { DatabaseSync } from "node:sqlite";
 import path from "node:path";
 import fs from "node:fs";
+import os from "node:os";
 
 let dbInstance: DatabaseSync | null = null;
 
 export function getDb(): DatabaseSync {
   if (dbInstance) return dbInstance;
 
-  const dataDir = path.join(process.cwd(), "data");
-  if (!fs.existsSync(dataDir)) {
-    fs.mkdirSync(dataDir, { recursive: true });
+  let dataDir = path.join(process.cwd(), "data");
+  let dbPath = path.join(dataDir, "platform.db");
+
+  try {
+    if (!fs.existsSync(dataDir)) {
+      fs.mkdirSync(dataDir, { recursive: true });
+    }
+  } catch (err: any) {
+    // Handle read-only serverless environments (e.g. AWS Lambda / Vercel)
+    if (err?.code === "EROFS" || err?.message?.includes("read-only")) {
+      dataDir = path.join(os.tmpdir(), "platform-data");
+      dbPath = path.join(dataDir, "platform.db");
+      if (!fs.existsSync(dataDir)) {
+        fs.mkdirSync(dataDir, { recursive: true });
+      }
+    } else {
+      throw err;
+    }
   }
 
-  const dbPath = path.join(dataDir, "platform.db");
-  const db = new DatabaseSync(dbPath);
+  let db: DatabaseSync;
+  try {
+    db = new DatabaseSync(dbPath);
+  } catch (err: any) {
+    if (err?.code === "EROFS" || err?.message?.includes("read-only")) {
+      dataDir = path.join(os.tmpdir(), "platform-data");
+      dbPath = path.join(dataDir, "platform.db");
+      if (!fs.existsSync(dataDir)) {
+        fs.mkdirSync(dataDir, { recursive: true });
+      }
+      db = new DatabaseSync(dbPath);
+    } else {
+      throw err;
+    }
+  }
 
   // Enable foreign keys and WAL mode if applicable
   db.exec("PRAGMA foreign_keys = ON;");

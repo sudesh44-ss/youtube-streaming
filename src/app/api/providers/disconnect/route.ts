@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getCurrentSession } from "@/lib/auth";
-import { getDb } from "@/lib/db";
+import { disconnectProviderCredential } from "@/lib/data-service";
 import { checkRateLimit, getClientIp, rateLimitExceededResponse, RATE_LIMIT_POLICIES } from "@/lib/rate-limit";
 
 export async function POST(req: NextRequest) {
@@ -21,19 +21,11 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "providerId is required." }, { status: 400 });
     }
 
-    const db = getDb();
-    db.prepare("DELETE FROM provider_credentials WHERE user_id = ? AND provider_id = ?").run(
-      session.user.id,
-      providerId
-    );
+    const result = await disconnectProviderCredential(session.user.id, providerId);
 
-    return NextResponse.json({
-      success: true,
-      providerId,
-      status: "disconnected",
-    });
-  } catch (err) {
+    return NextResponse.json(result);
+  } catch (err: any) {
     console.error("Disconnect provider error:", err);
-    return NextResponse.json({ error: "Failed to disconnect provider." }, { status: 500 });
+    return NextResponse.json({ error: err?.message || "Failed to disconnect provider." }, { status: 500 });
   }
 }

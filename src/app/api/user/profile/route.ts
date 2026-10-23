@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getCurrentSession } from "@/lib/auth";
-import { getDb } from "@/lib/db";
+import { updateUserProfile } from "@/lib/data-service";
 
 export const dynamic = "force-dynamic";
 
@@ -16,7 +16,7 @@ export async function GET() {
       user: session.user,
       preferences: session.preferences,
     });
-  } catch (err) {
+  } catch {
     return NextResponse.json({ error: "Failed to fetch profile." }, { status: 500 });
   }
 }
@@ -35,15 +35,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Name must be at least 2 characters." }, { status: 400 });
     }
 
-    const db = getDb();
-    const now = Date.now();
-
-    db.prepare("UPDATE users SET name = ?, updated_at = ? WHERE id = ?").run(updatedName, now, session.user.id);
-    db.prepare("UPDATE user_preferences SET display_name = ?, updated_at = ? WHERE user_id = ?").run(
-      updatedName,
-      now,
-      session.user.id
-    );
+    await updateUserProfile(session.user.id, updatedName);
 
     return NextResponse.json({ success: true, name: updatedName });
   } catch (err) {

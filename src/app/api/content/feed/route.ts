@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getCurrentSession } from "@/lib/auth";
-import { getUserProviderKey } from "@/lib/providers";
+import { getUserProviderKeyAsync } from "@/lib/data-service";
 import { YouTubeAdapter } from "@/lib/providers/youtube";
 import { getRecommendedContent } from "@/lib/recommendations";
 import { getCachedFeed, setCachedFeed, DiscoverFeedData } from "@/lib/feed-cache";
@@ -26,7 +26,7 @@ export async function GET(req: NextRequest) {
     const forceRefresh = searchParams.get("refresh") === "true";
     const batch = parseInt(searchParams.get("batch") || "1", 10);
 
-    const apiKey = getUserProviderKey(userId, "youtube") || undefined;
+    const apiKey = (await getUserProviderKeyAsync(userId, "youtube")) || undefined;
 
     // Strict Requirement: Feed MUST remain blank until a valid YouTube API key is saved.
     // Do not return placeholder videos, demo cards, or hardcoded recommendations when no key exists.

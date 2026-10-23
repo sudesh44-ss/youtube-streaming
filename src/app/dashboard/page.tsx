@@ -83,6 +83,7 @@ export default function DashboardPage() {
 
   // Request race-condition guard
   const requestIdRef = useRef(0);
+  const lastProcessedUrlQueryRef = useRef<string | null>(null);
 
   // Check authentication with resilient network drop tolerance
   useEffect(() => {
@@ -347,23 +348,23 @@ export default function DashboardPage() {
     }
   }, [user, isStreamingDefaultView, fetchFeed, fetchContent]);
 
-  // Restore search query from URL params (e.g. from Search History click)
+  // Restore search query from URL params (e.g. from Search History click) without infinite loop
   useEffect(() => {
     if (typeof window !== "undefined") {
       const params = new URLSearchParams(window.location.search);
       const q = params.get("q");
-      if (q && q.trim()) {
-        const trimmed = q.trim();
+      const trimmed = q?.trim() || "";
+      if (trimmed && trimmed !== lastProcessedUrlQueryRef.current) {
+        lastProcessedUrlQueryRef.current = trimmed;
         setSearchQuery(trimmed);
         setSubmittedQuery(trimmed);
         const cat = params.get("category") || undefined;
         const m = (params.get("mode") as BrowsingMode) || "normal";
         if (cat) setSelectedCategory(cat);
         if (m) setMode(m);
-        fetchContent(trimmed, videoType);
       }
     }
-  }, [fetchContent, videoType]);
+  }, []);
 
   // Handle Explicit Search Submission
   const handleSearchSubmit = (query: string) => {

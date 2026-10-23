@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getCurrentSession } from "@/lib/auth";
-import { getUserProviderKey } from "@/lib/providers";
+import { getUserProviderKeyAsync } from "@/lib/data-service";
 import { YouTubeAdapter } from "@/lib/providers/youtube";
 import { NormalizedContentItem } from "@/lib/types";
 
@@ -25,7 +25,7 @@ export async function GET(req: NextRequest) {
     const pageToken = searchParams.get("pageToken") || undefined;
     const forceRefresh = searchParams.get("refresh") === "true";
 
-    const apiKey = getUserProviderKey(userId, "youtube") || undefined;
+    const apiKey = (await getUserProviderKeyAsync(userId, "youtube")) || undefined;
 
     // Strict requirement: If no valid YouTube API key is saved, do not display videos
     if (!apiKey) {

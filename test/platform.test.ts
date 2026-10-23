@@ -1036,6 +1036,84 @@ async function runTests() {
     assert(callbackCode.includes("redirectResponse.cookies.set"), "Callback must explicitly attach cookies to redirect response");
   });
 
+  // --- 38. SERVERLESS DATA LAYER: PROVIDER CREDENTIALS & STATUS ---
+  await test("Serverless Data Layer: Provider status returns full catalog with not_connected and encrypted storage", async () => {
+    const { getProviderStatusListAsync, saveProviderCredential, getUserProviderKeyAsync, disconnectProviderCredential } = await import("../src/lib/data-service");
+    const testUserId = "data-test-user-" + Date.now();
+    const db = getDb();
+    const now = Date.now();
+    db.prepare("INSERT INTO users (id, email, password_hash, salt, name, created_at, updated_at) VALUES (?, ?, 'dummy', 'salt', 'Data User', ?, ?)").run(testUserId, `${testUserId}@test.local`, now, now);
+
+    // Initial status
+    const initial = await getProviderStatusListAsync(testUserId);
+    assert.strictEqual(initial.length, 2);
+    const yt = initial.find((p) => p.id === "youtube");
+    assert(yt && yt.status === "not_connected", "Initial status must be not_connected");
+
+    // Save & encrypt
+    const rawKey = "AIzaSyTestServerlessDataLayerKey123456";
+    const saveRes = await saveProviderCredential(testUserId, "youtube", rawKey);
+    assert.strictEqual(saveRes.success, true);
+    assert.strictEqual(saveRes.status, "connected");
+
+    // Decrypted retrieval
+    const retrieved = await getUserProviderKeyAsync(testUserId, "youtube");
+    assert.strictEqual(retrieved, rawKey, "Decrypted key must match original key");
+
+    // Updated status
+    const updated = await getProviderStatusListAsync(testUserId);
+    const updatedYt = updated.find((p) => p.id === "youtube");
+    assert.strictEqual(updatedYt?.status, "connected");
+    assert(updatedYt?.maskedKey?.startsWith("AIza"), "Masked key must be populated");
+
+    // Disconnect
+    await disconnectProviderCredential(testUserId, "youtube");
+    const postDisconnect = await getUserProviderKeyAsync(testUserId, "youtube");
+    assert.strictEqual(postDisconnect, null, "Key must be purged after disconnect");
+
+    db.prepare("DELETE FROM users WHERE id = ?").run(testUserId);
+  });
+
+  // --- 39. SERVERLESS DATA LAYER: WATCH PROGRESS & SAVED CONTENT ---
+  await test("Serverless Data Layer: Persists and retrieves watch progress and saved content", async () => {
+    const { saveWatchProgressForUser, getWatchProgressForUser, saveContentForUser, getSavedContentForUser, deleteSavedContentForUser } = await import("../src/lib/data-service");
+    const testUserId = "content-test-user-" + Date.now();
+    const db = getDb();
+    const now = Date.now();
+    db.prepare("INSERT INTO users (id, email, password_hash, salt, name, created_at, updated_at) VALUES (?, ?, 'dummy', 'salt', 'Content User', ?, ?)").run(testUserId, `${testUserId}@test.local`, now, now);
+
+    // Watch progress
+    await saveWatchProgressForUser(testUserId, {
+      contentId: "test-video-abc",
+      title: "Test Video ABC",
+      durationSeconds: 600,
+      progressSeconds: 300,
+    });
+    const progressList = await getWatchProgressForUser(testUserId);
+    assert.strictEqual(progressList.length, 1);
+    assert.strictEqual(progressList[0].content_id, "test-video-abc");
+    assert.strictEqual(progressList[0].progress_percent, 50);
+
+    // Saved content
+    await saveContentForUser(testUserId, {
+      provider: "youtube",
+      contentId: "saved-item-xyz",
+      title: "Saved Item XYZ",
+      thumbnail: "https://example.com/thumb.jpg",
+      category: "technology",
+    });
+    const savedList = await getSavedContentForUser(testUserId);
+    assert.strictEqual(savedList.length, 1);
+    assert.strictEqual(savedList[0].providerId, "saved-item-xyz");
+
+    // Delete saved content
+    await deleteSavedContentForUser(testUserId, "youtube", "saved-item-xyz");
+    const remainingSaved = await getSavedContentForUser(testUserId);
+    assert.strictEqual(remainingSaved.length, 0);
+
+    db.prepare("DELETE FROM users WHERE id = ?").run(testUserId);
+  });
+
   console.log(`\n=== TEST RESULTS: ${passed} PASSED, ${failed} FAILED ===\n`);
   if (failed > 0) process.exit(1);
 }

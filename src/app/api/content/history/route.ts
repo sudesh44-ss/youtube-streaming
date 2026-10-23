@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { getCurrentSession } from "@/lib/auth";
-import { getDb } from "@/lib/db";
+import { getSearchHistoryForUser, clearSearchHistoryForUser } from "@/lib/data-service";
 
 export const dynamic = "force-dynamic";
 
@@ -11,16 +11,7 @@ export async function GET() {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const db = getDb();
-    const rows = db.prepare(`
-      SELECT DISTINCT query, category, mode, MAX(searched_at) as searched_at
-      FROM search_history
-      WHERE user_id = ?
-      GROUP BY query
-      ORDER BY searched_at DESC
-      LIMIT 15
-    `).all(session.user.id);
-
+    const rows = await getSearchHistoryForUser(session.user.id);
     return NextResponse.json({ success: true, history: rows });
   } catch (err) {
     console.error("History GET error:", err);
@@ -35,9 +26,7 @@ export async function DELETE() {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const db = getDb();
-    db.prepare("DELETE FROM search_history WHERE user_id = ?").run(session.user.id);
-
+    await clearSearchHistoryForUser(session.user.id);
     return NextResponse.json({ success: true, message: "Search history cleared." });
   } catch (err) {
     console.error("History DELETE error:", err);

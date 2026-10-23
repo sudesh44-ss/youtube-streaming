@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getCurrentSession } from "@/lib/auth";
 import { getRecommendedContent } from "@/lib/recommendations";
-import { getUserProviderKey } from "@/lib/providers";
+import { getUserProviderKeyAsync } from "@/lib/data-service";
 import { BrowsingMode } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
@@ -17,7 +17,7 @@ export async function GET(req: NextRequest) {
     const videoType = (searchParams.get("videoType") as "all" | "shorts" | "videos") || "all";
     const limit = parseInt(searchParams.get("limit") || "16", 10);
 
-    const apiKey = getUserProviderKey(session?.user?.id, "youtube") || undefined;
+    const apiKey = (await getUserProviderKeyAsync(session?.user?.id, "youtube")) || undefined;
     if (!apiKey) {
       return NextResponse.json({
         success: true,

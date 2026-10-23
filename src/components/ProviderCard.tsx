@@ -12,6 +12,7 @@ interface ProviderCardProps {
 }
 
 export function ProviderCard({ provider, onRefresh }: ProviderCardProps) {
+  const isConnected = provider.status === "connected";
   const [isEditing, setIsEditing] = useState(false);
   const [apiKeyInput, setApiKeyInput] = useState("");
   const [showKey, setShowKey] = useState(false);
@@ -234,8 +235,8 @@ export function ProviderCard({ provider, onRefresh }: ProviderCardProps) {
         </div>
       )}
 
-      {/* Credential Entry Form */}
-      {isEditing ? (
+      {/* Credential Entry Form (Directly accessible if not connected or if editing/replacing) */}
+      {!isConnected || isEditing ? (
         <form onSubmit={handleSaveCredentials} style={{ display: "flex", flexDirection: "column", gap: "0.875rem" }}>
           <div className="input-group" style={{ marginBottom: 0 }}>
             <label className="label">Enter your {provider.name} {provider.requiredCredential}:</label>
@@ -245,7 +246,7 @@ export function ProviderCard({ provider, onRefresh }: ProviderCardProps) {
                 className="input"
                 value={apiKeyInput}
                 onChange={(e) => setApiKeyInput(e.target.value)}
-                placeholder={`Paste ${provider.requiredCredential} here...`}
+                placeholder={`Paste your ${provider.name} ${provider.requiredCredential} here...`}
                 required
                 style={{ paddingRight: "2.5rem" }}
               />
@@ -272,31 +273,43 @@ export function ProviderCard({ provider, onRefresh }: ProviderCardProps) {
             </span>
           </div>
 
-          <div style={{ display: "flex", gap: "0.625rem", justifyContent: "flex-end" }}>
-            <button
-              type="button"
-              onClick={() => {
-                setIsEditing(false);
-                setApiKeyInput("");
-                setTestResult(null);
-              }}
+          <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", justifyContent: "space-between", gap: "0.625rem", marginTop: "0.25rem" }}>
+            <Link
+              href={provider.setupGuideUrl}
               className="btn btn-outline btn-sm"
-              disabled={loading}
+              style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}
             >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              className="btn btn-primary btn-sm"
-              disabled={loading || !apiKeyInput.trim()}
-            >
-              {loading ? <RefreshCw size={14} className="spin" /> : <Key size={14} />}
-              Validate & Encrypt
-            </button>
+              <BookOpen size={14} /> Setup Guide
+            </Link>
+
+            <div style={{ display: "flex", gap: "0.625rem" }}>
+              {isEditing && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsEditing(false);
+                    setApiKeyInput("");
+                    setTestResult(null);
+                  }}
+                  className="btn btn-outline btn-sm"
+                  disabled={loading}
+                >
+                  Cancel
+                </button>
+              )}
+              <button
+                type="submit"
+                className="btn btn-primary btn-sm"
+                disabled={loading || !apiKeyInput.trim()}
+              >
+                {loading ? <RefreshCw size={14} className="spin" /> : <Key size={14} />}
+                Validate &amp; Encrypt
+              </button>
+            </div>
           </div>
         </form>
       ) : (
-        /* Action Buttons Row */
+        /* Action Buttons Row when Connected */
         <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", justifyContent: "space-between", gap: "0.625rem", marginTop: "auto" }}>
           <Link
             href={provider.setupGuideUrl}
@@ -307,43 +320,31 @@ export function ProviderCard({ provider, onRefresh }: ProviderCardProps) {
           </Link>
 
           <div style={{ display: "flex", gap: "0.5rem" }}>
-            {provider.status === "connected" ? (
-              <>
-                <button
-                  type="button"
-                  onClick={handleTestExisting}
-                  disabled={loading}
-                  className="btn btn-secondary btn-sm"
-                  title="Test existing connection"
-                >
-                  {loading ? <RefreshCw size={14} className="spin" /> : <RefreshCw size={14} />} Test
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setIsEditing(true)}
-                  className="btn btn-outline btn-sm"
-                >
-                  Replace Key
-                </button>
-                <button
-                  type="button"
-                  onClick={handleDisconnect}
-                  disabled={loading}
-                  className="btn btn-danger btn-sm"
-                  title="Disconnect provider"
-                >
-                  <Unlink size={14} /> Disconnect
-                </button>
-              </>
-            ) : (
-              <button
-                type="button"
-                onClick={() => setIsEditing(true)}
-                className="btn btn-primary btn-sm"
-              >
-                <Key size={14} /> Connect Provider
-              </button>
-            )}
+            <button
+              type="button"
+              onClick={handleTestExisting}
+              disabled={loading}
+              className="btn btn-secondary btn-sm"
+              title="Test existing connection"
+            >
+              {loading ? <RefreshCw size={14} className="spin" /> : <RefreshCw size={14} />} Test Connection
+            </button>
+            <button
+              type="button"
+              onClick={() => setIsEditing(true)}
+              className="btn btn-outline btn-sm"
+            >
+              Replace Key
+            </button>
+            <button
+              type="button"
+              onClick={handleDisconnect}
+              disabled={loading}
+              className="btn btn-danger btn-sm"
+              title="Disconnect provider"
+            >
+              <Unlink size={14} /> Disconnect
+            </button>
           </div>
         </div>
       )}
