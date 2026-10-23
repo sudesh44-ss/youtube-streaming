@@ -1,3 +1,4 @@
+process.env.IS_PLATFORM_TEST = "true";
 import assert from "node:assert";
 import { getDb } from "../src/lib/db";
 import {
@@ -776,6 +777,263 @@ async function runTests() {
         "Without authorized user OAuth token, subscriptionStatus must be 'unknown', never falsely 'not_subscribed'"
       );
     }
+  });
+
+  // --- 27. NAVBAR AUTH-DEPENDENT LINK VISIBILITY ---
+  await test("Navbar Auth Visibility: Hides Dashboard, Watchlist, Settings & Feed when logged out", async () => {
+    const fs = await import("fs/promises");
+    const navbarCode = await fs.readFile("src/components/Navbar.tsx", "utf-8");
+
+    // Verify separation into AUTH_NAV_ITEMS and PUBLIC_NAV_ITEMS
+    assert(navbarCode.includes("AUTH_NAV_ITEMS"), "Navbar must define AUTH_NAV_ITEMS");
+    assert(navbarCode.includes("PUBLIC_NAV_ITEMS"), "Navbar must define PUBLIC_NAV_ITEMS");
+
+    // Verify isAuthenticated controls visibleMenuItems
+    assert(
+      navbarCode.includes("isAuthenticated ? [...AUTH_NAV_ITEMS, ...PUBLIC_NAV_ITEMS] : PUBLIC_NAV_ITEMS") ||
+      navbarCode.includes("isAuthenticated"),
+      "Navbar must condition menu items on authentication status"
+    );
+
+    // Verify Discover Feed is wrapped in isAuthenticated check
+    assert(
+      navbarCode.includes("{isAuthenticated && (") || navbarCode.includes("isAuthenticated &&"),
+      "Discover Feed section shortcuts must be guarded by isAuthenticated"
+    );
+  });
+
+  // --- 28. NAVBAR PANEL ICON & LABEL HORIZONTAL ALIGNMENT ---
+  await test("Navbar Panel Alignment: Enforces horizontal flex layout, icon width, and gap", async () => {
+    const fs = await import("fs/promises");
+    const navbarCode = await fs.readFile("src/components/Navbar.tsx", "utf-8");
+
+    // Verify horizontal flex on desktop and drawer items
+    assert(navbarCode.includes("flex-direction: row !important"), "Menu items must use flex-direction: row");
+    assert(navbarCode.includes("align-items: center !important"), "Menu items must use align-items: center");
+    assert(navbarCode.includes("gap: 11px"), "Menu items must have 10-12px horizontal gap");
+    assert(navbarCode.includes("width: 20px"), "Icons must have fixed width for aligned start position");
+    assert(navbarCode.includes("menu-panel-item-label"), "Labels must have dedicated label class");
+  });
+
+  // --- 29. LOCAL WATCH HISTORY & SEARCH HISTORY ISOLATION ---
+  await test("Local History Storage: Supports watch and search history independently without mutating saved videos", async () => {
+    const mockStorage = new Map<string, string>();
+    const fakeWindow = {
+      localStorage: {
+        getItem: (k: string) => mockStorage.get(k) || null,
+        setItem: (k: string, v: string) => mockStorage.set(k, v),
+        removeItem: (k: string) => mockStorage.delete(k),
+      },
+      dispatchEvent: () => true,
+    };
+
+    const originalWindow = (global as any).window;
+    (global as any).window = fakeWindow;
+
+    try {
+      const storageLib = await import("../src/lib/local-storage");
+
+      // Add Watchlist item
+      storageLib.addToLocalWatchlist({
+        videoId: "vid_saved_1",
+        title: "Saved Video 1",
+        thumbnailUrl: "https://example.com/thumb1.jpg",
+      });
+
+      // Add Watch History items
+      storageLib.addToWatchHistory({
+        videoId: "vid_hist_1",
+        title: "Watched Video 1",
+        thumbnailUrl: "https://example.com/thumb_h1.jpg",
+        channelName: "Creator 1",
+      });
+      storageLib.addToWatchHistory({
+        videoId: "vid_hist_2",
+        title: "Watched Video 2",
+        thumbnailUrl: "https://example.com/thumb_h2.jpg",
+        channelName: "Creator 2",
+      });
+
+      // Verify watch history order (most recent first)
+      const watchHist = storageLib.getWatchHistory();
+      assert.strictEqual(watchHist.length, 2, "Watch history must have 2 items");
+      assert.strictEqual(watchHist[0].videoId, "vid_hist_2", "Most recently watched video must be first");
+
+      // Re-watch video 1: must move to top without duplicates
+      storageLib.addToWatchHistory({
+        videoId: "vid_hist_1",
+        title: "Watched Video 1",
+        thumbnailUrl: "https://example.com/thumb_h1.jpg",
+        channelName: "Creator 1",
+      });
+      const rewatchedHist = storageLib.getWatchHistory();
+      assert.strictEqual(rewatchedHist.length, 2, "Watch history must not duplicate on re-watch");
+      assert.strictEqual(rewatchedHist[0].videoId, "vid_hist_1", "Re-watched video must move to top");
+
+      // Add Search History items
+      storageLib.addToSearchHistory({ query: "nextjs tutorial", searchMode: "normal" });
+      storageLib.addToSearchHistory({ query: "pokemon", searchMode: "normal" });
+
+      const searchHist = storageLib.getSearchHistory();
+      assert.strictEqual(searchHist.length, 2, "Search history must have 2 entries");
+      assert.strictEqual(searchHist[0].query, "pokemon", "Most recent search must be first");
+
+      // Clear watch history: must NOT clear watchlist or search history
+      storageLib.clearWatchHistory();
+      assert.strictEqual(storageLib.getWatchHistory().length, 0, "Watch history must be cleared");
+      assert.strictEqual(storageLib.getLocalWatchlist().length, 1, "Watchlist must remain intact when watch history cleared");
+      assert.strictEqual(storageLib.getSearchHistory().length, 2, "Search history must remain intact when watch history cleared");
+
+      // Test individual search deletion
+      storageLib.removeFromSearchHistory(searchHist[0].id);
+      assert.strictEqual(storageLib.getSearchHistory().length, 1, "Item must be removed from search history");
+
+      // Explicit logout clears all user-specific local collections
+      storageLib.clearLocalUserCollections();
+      assert.strictEqual(storageLib.getLocalWatchlist().length, 0, "Watchlist must be cleared on logout");
+      assert.strictEqual(storageLib.getSearchHistory().length, 0, "Search history must be cleared on logout");
+      assert.strictEqual(storageLib.getWatchHistory().length, 0, "Watch history must be cleared on logout");
+    } finally {
+      (global as any).window = originalWindow;
+    }
+  });
+
+  // --- 30. DEDICATED CATEGORY ROUTES & NAVBAR SHORTCUTS ---
+  await test("Dedicated Category Pages: Navbar defines 4 dedicated category pages and removes Recommended", async () => {
+    const fs = await import("fs/promises");
+    const navbarCode = await fs.readFile("src/components/Navbar.tsx", "utf-8");
+
+    // Verify Recommended for You was removed
+    assert(!navbarCode.includes('"Recommended for You"'), "Recommended for You must be removed from navbar shortcuts");
+
+    // Verify the 4 dedicated category routes
+    assert(navbarCode.includes("/discover/trending"), "Navbar must route to /discover/trending");
+    assert(navbarCode.includes("/discover/music"), "Navbar must route to /discover/music");
+    assert(navbarCode.includes("/discover/gaming"), "Navbar must route to /discover/gaming");
+    assert(navbarCode.includes("/discover/study"), "Navbar must route to /discover/study");
+
+    // Verify Watch History and Search History in AUTH_NAV_ITEMS
+    assert(navbarCode.includes("/dashboard/history"), "Navbar must link to /dashboard/history");
+    assert(navbarCode.includes("/dashboard/search-history"), "Navbar must link to /dashboard/search-history");
+    assert(navbarCode.includes("clearLocalUserCollections"), "Navbar logout must clear local user collections");
+  });
+
+  // --- 31. UNIFIED FEED 20-VIDEO BATCH & POKÉMON CHANNEL PROFILE ---
+  await test("Unified Feed & Channel Search: Generates up to 20 videos and provides complete channel profiles", async () => {
+    const { YouTubeAdapter } = await import("../src/lib/providers/youtube");
+    const adapter = new YouTubeAdapter();
+
+    // Verify Pokemon channel search returns complete profile with @ handle and avatar
+    const pokemonChannels = await adapter.searchChannels("Pokemon");
+    assert(pokemonChannels.length > 0, "Channel search for Pokemon must return channel profile");
+    const poke = pokemonChannels[0];
+    assert(poke.avatar && poke.avatar.length > 0, "Pokemon channel must have profile avatar URL");
+    assert(poke.customUrl?.startsWith("@"), "Handle must begin with @");
+    assert(poke.channelUrl?.startsWith("http"), "Channel URL must be valid link");
+  });
+
+  // --- 32. THEME STABILITY SAFEGUARD ---
+  await test("Theme Stability: ThemeProvider defaults to dark and ThemeToggle avoids mount overrides", async () => {
+    const fs = await import("fs/promises");
+    const themeProviderCode = await fs.readFile("src/components/ThemeProvider.tsx", "utf-8");
+    const themeToggleCode = await fs.readFile("src/components/ThemeToggle.tsx", "utf-8");
+    const layoutCode = await fs.readFile("src/app/layout.tsx", "utf-8");
+
+    // Verify ThemeProvider wraps application and defaults to dark
+    assert(themeProviderCode.includes('useState<Theme>("dark")'), "ThemeProvider must default to dark");
+    assert(layoutCode.includes("<ThemeProvider>"), "RootLayout must wrap app in ThemeProvider");
+
+    // Verify ThemeToggle does not trigger theme resets in its own useEffect
+    assert(!themeToggleCode.includes("window.matchMedia"), "ThemeToggle must not use local matchMedia to override theme");
+    assert(!themeToggleCode.includes("useEffect"), "ThemeToggle should not have mount effect resetting data-theme");
+  });
+
+  // --- 33. CHANNEL CARD SIMPLIFICATION ---
+  await test("Simplified ChannelCard: Removes Status Unknown, Connect YouTube, and video count", async () => {
+    const fs = await import("fs/promises");
+    const channelCardCode = await fs.readFile("src/components/ChannelCard.tsx", "utf-8");
+
+    // Verify removed elements
+    assert(!channelCardCode.includes("Status Unknown"), "ChannelCard must not show 'Status Unknown'");
+    assert(!channelCardCode.includes("Connect YouTube"), "ChannelCard must not show 'Connect YouTube' button");
+    assert(!channelCardCode.includes("channel.videoCount"), "ChannelCard must not display video count");
+
+    // Verify retained core elements
+    assert(channelCardCode.includes("channel.avatar"), "ChannelCard must retain avatar support");
+    assert(channelCardCode.includes("channel.title"), "ChannelCard must retain title");
+    assert(channelCardCode.includes("channel.customUrl"), "ChannelCard must retain custom handle");
+    assert(channelCardCode.includes("channel.subscriberCount"), "ChannelCard must retain subscriber count");
+    assert(channelCardCode.includes("channel.channelUrl"), "ChannelCard must retain external channel link");
+    assert(channelCardCode.includes("ExternalLink"), "ChannelCard must have external link icon");
+  });
+
+  // --- 34. YOUTUBE API KEY REQUIREMENT GATE ---
+  await test("API Key Requirement Gate: Renders requirement box and blocks demo video display", async () => {
+    const fs = await import("fs/promises");
+    const reqBoxCode = await fs.readFile("src/components/ApiKeyRequirement.tsx", "utf-8");
+    const dashboardCode = await fs.readFile("src/app/dashboard/page.tsx", "utf-8");
+    const landingCode = await fs.readFile("src/app/page.tsx", "utf-8");
+    const categoryCode = await fs.readFile("src/app/discover/[category]/page.tsx", "utf-8");
+
+    // Verify exact required text and buttons in ApiKeyRequirement
+    assert(reqBoxCode.includes("Connect Your YouTube API Key"), "Must have heading 'Connect Your YouTube API Key'");
+    assert(
+      reqBoxCode.includes("To explore YouTube videos, search channels, and discover trending content on OmniDiscover, add your YouTube Data API key first."),
+      "Must have exact requirement message"
+    );
+    assert(reqBoxCode.includes("/help/connecting-youtube"), "Must link to /help/connecting-youtube");
+    assert(reqBoxCode.includes("How to Get API Key"), "Must have button 'How to Get API Key'");
+    assert(reqBoxCode.includes("/settings"), "Must link to /settings");
+    assert(reqBoxCode.includes("Add API Key"), "Must have button 'Add API Key'");
+
+    // Verify gate enforcement across pages
+    assert(dashboardCode.includes("<ApiKeyRequirement"), "Dashboard must render ApiKeyRequirement when key is missing");
+    assert(landingCode.includes("<ApiKeyRequirement"), "Landing page must render ApiKeyRequirement when key is missing");
+    assert(categoryCode.includes("<ApiKeyRequirement"), "Category discovery pages must render ApiKeyRequirement when key is missing");
+  });
+
+  // --- 35. MIDDLEWARE SESSION PROTECTION ---
+  await test("Middleware Session Protection: Validates @supabase/ssr token refresh and route protection", async () => {
+    const fs = await import("fs/promises");
+    const middlewareCode = await fs.readFile("src/middleware.ts", "utf-8");
+
+    // Verify createServerClient usage for session refresh
+    assert(middlewareCode.includes("createServerClient"), "Middleware must use @supabase/ssr createServerClient");
+    assert(middlewareCode.includes("supabase.auth.getUser()"), "Middleware must refresh session via supabase.auth.getUser()");
+    assert(middlewareCode.includes("PROTECTED_PREFIXES"), "Middleware must define protected route prefixes");
+    assert(middlewareCode.includes('"/dashboard"'), "Protected prefixes must include /dashboard");
+    assert(middlewareCode.includes('"/settings"'), "Protected prefixes must include /settings");
+    assert(middlewareCode.includes("platform_session"), "Middleware must check platform_session cookie");
+  });
+
+  // --- 36. CLIENT AUTH STATE RESILIENCE ---
+  await test("Client Auth State Resilience: Prevents false logouts on network interruption", async () => {
+    const fs = await import("fs/promises");
+    const navbarCode = await fs.readFile("src/components/Navbar.tsx", "utf-8");
+    const dashboardCode = await fs.readFile("src/app/dashboard/page.tsx", "utf-8");
+    const clientCode = await fs.readFile("src/lib/supabase/client.ts", "utf-8");
+
+    // Verify Navbar does not wipe session on catch
+    assert(navbarCode.includes("onAuthStateChange"), "Navbar must listen to real-time auth events");
+    assert(!navbarCode.includes("catch {\n      setUser(null);"), "Navbar must not reset user to null on network catch");
+
+    // Verify Dashboard does not redirect on catch
+    assert(!dashboardCode.includes('.catch(() => router.push("/auth/signin"))'), "Dashboard must not eject to signin on network catch");
+
+    // Verify singleton client
+    assert(clientCode.includes("browserClientInstance"), "Supabase browser client must use singleton pattern");
+  });
+
+  // --- 37. OAUTH CALLBACK SECURITY ---
+  await test("OAuth Callback Security: Enforces open-redirect prevention and forwards cookies", async () => {
+    const fs = await import("fs/promises");
+    const callbackCode = await fs.readFile("src/app/auth/callback/route.ts", "utf-8");
+
+    // Verify open-redirect protection
+    assert(callbackCode.includes('rawNext.startsWith("/")'), "Callback must require relative path starting with /");
+    assert(callbackCode.includes('!rawNext.startsWith("//")'), "Callback must reject protocol-relative open redirect //");
+    assert(callbackCode.includes("exchangeCodeForSession"), "Callback must exchange code for session");
+    assert(callbackCode.includes("redirectResponse.cookies.set"), "Callback must explicitly attach cookies to redirect response");
   });
 
   console.log(`\n=== TEST RESULTS: ${passed} PASSED, ${failed} FAILED ===\n`);

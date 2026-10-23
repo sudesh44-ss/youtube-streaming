@@ -6,6 +6,7 @@ export interface DiscoverFeedData {
   music: NormalizedContentItem[];
   gaming: NormalizedContentItem[];
   study: NormalizedContentItem[];
+  items?: NormalizedContentItem[];
   cachedAt: number;
 }
 

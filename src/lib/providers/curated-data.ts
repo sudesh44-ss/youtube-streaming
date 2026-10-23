@@ -618,6 +618,18 @@ export const CURATED_CATALOG: NormalizedContentItem[] = [
 
 export const CURATED_CHANNELS: YouTubeChannelItem[] = [
   {
+    id: "UCFctpiB_HnlZ3tKZ4P_4Wbg",
+    title: "The Official Pokémon YouTube channel",
+    customUrl: "@Pokemon",
+    description: "Welcome to the official Pokémon YouTube channel! Watch thrilling Pokémon animated trailers, game showcases, and championships.",
+    avatar: "https://images.unsplash.com/photo-1613770327091-62c1630a91ea?auto=format&fit=crop&w=300&q=80",
+    subscriberCount: "5.2M subscribers",
+    subscriberCountRaw: 5200000,
+    videoCount: "3.4K videos",
+    subscriptionStatus: "unknown",
+    channelUrl: "https://www.youtube.com/@Pokemon",
+  },
+  {
     id: "UC_x5XG1OV2P6uZZ5FSM9Ttw",
     title: "Marques Brownlee",
     customUrl: "@mkbhd",

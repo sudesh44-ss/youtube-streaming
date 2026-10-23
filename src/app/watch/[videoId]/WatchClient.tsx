@@ -24,6 +24,7 @@ import {
   toggleLocalWatchLater,
   isLikedLocally,
   toggleLocalLike,
+  addToWatchHistory,
   STORAGE_CHANGE_EVENT,
 } from "@/lib/local-storage";
 import { VideoDetailResponse } from "@/app/api/content/details/route";
@@ -227,8 +228,19 @@ export default function WatchClient({ videoId, initialTitle }: WatchClientProps)
   // Play button click handler
   const handleStartPlay = () => {
     setIsPlaying(true);
-    // Record real watch progress in background for continue watching
+    // Record in local watch history
     if (videoId) {
+      addToWatchHistory({
+        videoId,
+        title: item?.title || initialTitle || "YouTube Video",
+        thumbnailUrl: thumbnail,
+        channelName: item?.creator || "YouTube Creator",
+        duration: item?.duration,
+        lastWatched: Date.now(),
+        playbackPosition: playbackSeconds,
+      });
+
+      // Record real watch progress in background for continue watching
       fetch("/api/content/watch-progress", {
         method: "POST",
         headers: { "Content-Type": "application/json" },

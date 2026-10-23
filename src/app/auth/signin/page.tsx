@@ -48,6 +48,9 @@ export default function SignInPage() {
       if (!res.ok) {
         setError(data.error || "Authentication failed.");
       } else {
+        if (typeof window !== "undefined") {
+          window.dispatchEvent(new Event("auth-change"));
+        }
         router.push("/dashboard");
         router.refresh();
       }

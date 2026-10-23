@@ -109,9 +109,10 @@ export function ensureDevAdminUser(): {
     `).run(devUserId, config.email, hash, salt, "Development Administrator", now, now);
 
     db.prepare(`
-      INSERT OR IGNORE INTO user_preferences (user_id, display_name, default_mode, preferred_categories, preferred_languages, theme, updated_at)
+      INSERT INTO user_preferences (user_id, display_name, default_mode, preferred_categories, preferred_languages, theme, updated_at)
       VALUES (?, 'Development Administrator', 'normal', '["study","technology"]', '["en"]', 'system', ?)
-    `).run(devUserId, now);
+      ON CONFLICT(user_id) DO UPDATE SET display_name = 'Development Administrator', updated_at = ?
+    `).run(devUserId, now, now);
 
     db.prepare(`
       INSERT OR IGNORE INTO legal_acceptance (id, user_id, terms_version, privacy_version, accepted_at, user_agent)
@@ -128,9 +129,10 @@ export function ensureDevAdminUser(): {
 
     // Ensure preferences and legal acceptance exist
     db.prepare(`
-      INSERT OR IGNORE INTO user_preferences (user_id, display_name, default_mode, preferred_categories, preferred_languages, theme, updated_at)
+      INSERT INTO user_preferences (user_id, display_name, default_mode, preferred_categories, preferred_languages, theme, updated_at)
       VALUES (?, 'Development Administrator', 'normal', '["study","technology"]', '["en"]', 'system', ?)
-    `).run(user.id, now);
+      ON CONFLICT(user_id) DO UPDATE SET display_name = 'Development Administrator', updated_at = ?
+    `).run(user.id, now, now);
 
     db.prepare(`
       INSERT OR IGNORE INTO legal_acceptance (id, user_id, terms_version, privacy_version, accepted_at, user_agent)
@@ -211,8 +213,11 @@ export async function handleDevAdminLogin(options: { userAgent?: string; ip?: st
 export function cleanupDevAdmin() {
   const db = getDb();
   const config = getDevAdminCredentials();
+  const devUserId = "dev-admin-" + crypto.createHash("sha256").update(config.email).digest("hex").slice(0, 12);
   const user = db.prepare("SELECT id FROM users WHERE email = ?").get(config.email) as any;
-  if (user) {
-    db.prepare("DELETE FROM users WHERE id = ?").run(user.id);
-  }
+  const targetId = user?.id || devUserId;
+  db.prepare("DELETE FROM sessions WHERE user_id = ?").run(targetId);
+  db.prepare("DELETE FROM user_preferences WHERE user_id = ?").run(targetId);
+  db.prepare("DELETE FROM legal_acceptance WHERE user_id = ?").run(targetId);
+  db.prepare("DELETE FROM users WHERE id = ? OR email = ?").run(targetId, config.email);
 }

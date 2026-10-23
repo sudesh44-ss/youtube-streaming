@@ -1,34 +1,15 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useTheme } from "./ThemeProvider";
 import { Sun, Moon } from "lucide-react";
 
 export function ThemeToggle() {
-  const [theme, setTheme] = useState<"dark" | "light">("dark");
-
-  useEffect(() => {
-    const savedTheme = localStorage.getItem("platform_theme") as "dark" | "light" | null;
-    if (savedTheme) {
-      setTheme(savedTheme);
-      document.documentElement.setAttribute("data-theme", savedTheme);
-    } else {
-      const prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
-      const initial = prefersDark ? "dark" : "light";
-      setTheme(initial);
-      document.documentElement.setAttribute("data-theme", initial);
-    }
-  }, []);
-
-  const toggleTheme = () => {
-    const nextTheme = theme === "dark" ? "light" : "dark";
-    setTheme(nextTheme);
-    localStorage.setItem("platform_theme", nextTheme);
-    document.documentElement.setAttribute("data-theme", nextTheme);
-  };
+  const { theme, toggleTheme } = useTheme();
 
   return (
     <button
       onClick={toggleTheme}
+      type="button"
       className="btn btn-outline btn-sm"
       aria-label="Toggle visual theme"
       title={theme === "dark" ? "Switch to Light Mode" : "Switch to Dark Mode"}

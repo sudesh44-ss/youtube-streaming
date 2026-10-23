@@ -78,6 +78,9 @@ export default function SignUpPage() {
       if (!res.ok) {
         setError(data.error || "Registration failed.");
       } else {
+        if (typeof window !== "undefined") {
+          window.dispatchEvent(new Event("auth-change"));
+        }
         router.push("/dashboard");
         router.refresh();
       }

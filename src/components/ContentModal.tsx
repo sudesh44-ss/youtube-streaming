@@ -3,6 +3,7 @@
 import { useEffect } from "react";
 import { NormalizedContentItem } from "@/lib/types";
 import { X, ExternalLink, Shield, Info } from "lucide-react";
+import { addToWatchHistory } from "@/lib/local-storage";
 
 interface ContentModalProps {
   item: NormalizedContentItem | null;
@@ -19,9 +20,18 @@ export function ContentModal({ item, onClose, onToggleSave }: ContentModalProps)
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [onClose]);
 
-  // Record playback viewing session for Continue Watching
+  // Record playback viewing session for Continue Watching & Local Watch History
   useEffect(() => {
     if (item && item.provider === "youtube" && item.providerId) {
+      addToWatchHistory({
+        videoId: item.providerId,
+        title: item.title,
+        thumbnailUrl: item.thumbnail,
+        channelName: item.creator || "YouTube Creator",
+        duration: item.duration,
+        lastWatched: Date.now(),
+      });
+
       fetch("/api/content/watch-progress", {
         method: "POST",
         headers: { "Content-Type": "application/json" },

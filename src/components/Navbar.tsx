@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState, useRef, useCallback } from "react";
 import Link from "next/link";
 import { useRouter, usePathname } from "next/navigation";
 import {
@@ -14,8 +14,12 @@ import {
   Layers,
   ShieldCheck,
   FileText,
+  Clock,
+  Search,
 } from "lucide-react";
 import { ThemeToggle } from "./ThemeToggle";
+import { clearLocalUserCollections } from "@/lib/local-storage";
+import { isSupabaseConfigured, createClient } from "@/lib/supabase/client";
 
 interface UserInfo {
   id: string;
@@ -23,10 +27,15 @@ interface UserInfo {
   name: string;
 }
 
-const MENU_ITEMS = [
+const AUTH_NAV_ITEMS = [
   { label: "Dashboard", href: "/dashboard", icon: Compass },
   { label: "Watchlist", href: "/dashboard/saved", icon: Bookmark },
+  { label: "Watch History", href: "/dashboard/history", icon: Clock },
+  { label: "Search History", href: "/dashboard/search-history", icon: Search },
   { label: "Settings", href: "/settings", icon: Settings },
+];
+
+const PUBLIC_NAV_ITEMS = [
   { label: "Features", href: "/#features", icon: Sparkles },
   { label: "Categories", href: "/#categories", icon: Layers },
   { label: "Help Center", href: "/help", icon: HelpCircle },
@@ -35,11 +44,10 @@ const MENU_ITEMS = [
 ];
 
 const DISCOVER_SECTIONS = [
-  { label: "Trending on YouTube", sectionId: "trending", href: "/dashboard#trending", emoji: "🔥" },
-  { label: "Recommended for You", sectionId: "recommended", href: "/dashboard#recommended", emoji: "✨" },
-  { label: "Music & Live Performances", sectionId: "music", href: "/dashboard#music", emoji: "🎵" },
-  { label: "Gaming & Highlights", sectionId: "gaming", href: "/dashboard#gaming", emoji: "🎮" },
-  { label: "Study & Lectures", sectionId: "study", href: "/dashboard#study", emoji: "📚" },
+  { label: "Trending on YouTube", sectionId: "trending", href: "/discover/trending", emoji: "🔥" },
+  { label: "Music & Live Performances", sectionId: "music", href: "/discover/music", emoji: "🎵" },
+  { label: "Gaming & Highlights", sectionId: "gaming", href: "/discover/gaming", emoji: "🎮" },
+  { label: "Study & Lectures", sectionId: "study", href: "/discover/study", emoji: "📚" },
 ];
 
 export function Navbar() {
@@ -52,19 +60,64 @@ export function Navbar() {
   const desktopPanelRef = useRef<HTMLDivElement>(null);
   const toggleBtnRef = useRef<HTMLButtonElement>(null);
 
-  useEffect(() => {
-    fetch("/api/auth/session")
-      .then((res) => res.json())
-      .then((data) => {
-        if (data.session?.user) {
-          setUser(data.session.user);
-        } else {
+  const checkSession = useCallback(async () => {
+    try {
+      const res = await fetch("/api/auth/session");
+      if (!res.ok) {
+        // Only clear user on explicit 401 or 403; keep session on transient 5xx server issues
+        if (res.status === 401 || res.status === 403) {
           setUser(null);
         }
-      })
-      .catch(() => setUser(null))
-      .finally(() => setLoading(false));
-  }, [pathname]);
+        return;
+      }
+      const data = await res.json();
+      if (data.session?.user) {
+        setUser(data.session.user);
+      } else {
+        setUser(null);
+      }
+    } catch {
+      // Network interruption, offline, or transient timeout.
+      // Do NOT set user to null on temporary failures to prevent unexpected logouts.
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    checkSession();
+  }, [pathname, checkSession]);
+
+  // Synchronize on auth changes or window focus without aggressive logout on failure
+  useEffect(() => {
+    const handleAuthChange = () => checkSession();
+    window.addEventListener("focus", handleAuthChange);
+    window.addEventListener("auth-change", handleAuthChange);
+    return () => {
+      window.removeEventListener("focus", handleAuthChange);
+      window.removeEventListener("auth-change", handleAuthChange);
+    };
+  }, [checkSession]);
+
+  // Real-time Supabase Auth state listener for token refresh and external session changes
+  useEffect(() => {
+    if (!isSupabaseConfigured()) return;
+    try {
+      const supabase = createClient();
+      const { data: { subscription } } = supabase.auth.onAuthStateChange((event: any, session: any) => {
+        if (event === "SIGNED_IN" || event === "TOKEN_REFRESHED") {
+          checkSession();
+        } else if (event === "SIGNED_OUT") {
+          setUser(null);
+        }
+      });
+      return () => {
+        subscription.unsubscribe();
+      };
+    } catch {
+      // Safe fallback
+    }
+  }, [checkSession]);
 
   // Close menu on route change
   useEffect(() => {
@@ -111,7 +164,19 @@ export function Navbar() {
   const handleLogout = async () => {
     try {
       await fetch("/api/auth/logout", { method: "POST" });
+      if (isSupabaseConfigured()) {
+        try {
+          const supabase = createClient();
+          await supabase.auth.signOut();
+        } catch {
+          // Graceful browser signout
+        }
+      }
+      clearLocalUserCollections();
       setUser(null);
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(new Event("auth-change"));
+      }
       router.push("/");
       router.refresh();
     } catch (e) {
@@ -119,20 +184,16 @@ export function Navbar() {
     }
   };
 
-  const handleSectionClick = (e: React.MouseEvent, sectionId: string) => {
+  const handleSectionClick = (e: React.MouseEvent, href: string) => {
     e.preventDefault();
     setMenuOpen(false);
-
-    if (pathname === "/dashboard") {
-      const el = document.getElementById(sectionId);
-      if (el) {
-        el.scrollIntoView({ behavior: "smooth", block: "start" });
-        window.history.pushState(null, "", `/dashboard#${sectionId}`);
-      }
-    } else {
-      router.push(`/dashboard#${sectionId}`);
-    }
+    router.push(href);
   };
+
+  const isAuthenticated = !loading && Boolean(user);
+  const visibleMenuItems = isAuthenticated
+    ? [...AUTH_NAV_ITEMS, ...PUBLIC_NAV_ITEMS]
+    : PUBLIC_NAV_ITEMS;
 
   return (
     <header className="navbar-header">
@@ -191,9 +252,9 @@ export function Navbar() {
               aria-label="Navigation menu"
               className="nav-desktop-panel"
             >
-              {/* 1 to 8 Items */}
+              {/* Navigation Items */}
               <div className="menu-panel-list">
-                {MENU_ITEMS.map((item) => {
+                {visibleMenuItems.map((item) => {
                   const isActive = pathname === item.href;
                   const Icon = item.icon;
                   return (
@@ -203,39 +264,103 @@ export function Navbar() {
                       role="menuitem"
                       onClick={() => setMenuOpen(false)}
                       className={`menu-panel-item ${isActive ? "active" : ""}`}
+                      style={{
+                        display: "flex",
+                        flexDirection: "row",
+                        alignItems: "center",
+                        gap: "11px",
+                        width: "100%",
+                        whiteSpace: "nowrap",
+                      }}
                     >
-                      <span className="menu-panel-item-icon">
-                        <Icon size={17} />
+                      <span
+                        className="menu-panel-item-icon"
+                        aria-hidden="true"
+                        style={{
+                          width: "20px",
+                          height: "20px",
+                          minWidth: "20px",
+                          display: "inline-flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          flexShrink: 0,
+                        }}
+                      >
+                        <Icon size={18} />
                       </span>
-                      <span>{item.label}</span>
+                      <span
+                        className="menu-panel-item-label"
+                        style={{
+                          flex: 1,
+                          whiteSpace: "nowrap",
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                          textAlign: "left",
+                        }}
+                      >
+                        {item.label}
+                      </span>
                     </Link>
                   );
                 })}
               </div>
 
-              {/* Visual Divider */}
-              <div className="menu-panel-divider" />
+              {/* Discover Feed Section Shortcuts — Authenticated Only */}
+              {isAuthenticated && (
+                <>
+                  <div className="menu-panel-divider" />
+                  <div className="menu-sections-group">
+                    <div className="menu-sections-heading">Discover Feed</div>
+                    {DISCOVER_SECTIONS.map((sec) => (
+                      <a
+                        key={sec.sectionId}
+                        href={sec.href}
+                        role="menuitem"
+                        onClick={(e) => handleSectionClick(e, sec.href)}
+                        className="menu-panel-item"
+                        style={{
+                          display: "flex",
+                          flexDirection: "row",
+                          alignItems: "center",
+                          gap: "11px",
+                          width: "100%",
+                          whiteSpace: "nowrap",
+                        }}
+                      >
+                        <span
+                          className="menu-section-icon"
+                          aria-hidden="true"
+                          style={{
+                            width: "20px",
+                            height: "20px",
+                            minWidth: "20px",
+                            display: "inline-flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            flexShrink: 0,
+                          }}
+                        >
+                          {sec.emoji}
+                        </span>
+                        <span
+                          className="menu-panel-item-label"
+                          style={{
+                            flex: 1,
+                            whiteSpace: "nowrap",
+                            overflow: "hidden",
+                            textOverflow: "ellipsis",
+                            textAlign: "left",
+                          }}
+                        >
+                          {sec.label}
+                        </span>
+                      </a>
+                    ))}
+                  </div>
+                </>
+              )}
 
-              {/* Discover Feed Section Shortcuts */}
-              <div className="menu-sections-group">
-                <div className="menu-sections-heading">Discover Feed</div>
-                {DISCOVER_SECTIONS.map((sec) => (
-                  <a
-                    key={sec.sectionId}
-                    href={sec.href}
-                    role="menuitem"
-                    onClick={(e) => handleSectionClick(e, sec.sectionId)}
-                    className="menu-panel-item"
-                  >
-                    <span className="menu-section-icon" aria-hidden="true">
-                      {sec.emoji}
-                    </span>
-                    <span>{sec.label}</span>
-                  </a>
-                ))}
-              </div>
-
-              {/* Visual Divider */}
+              {/* Visual Divider before Account & Appearance */}
               <div className="menu-panel-divider" />
 
               {/* Account & Appearance Section */}
@@ -347,7 +472,7 @@ export function Navbar() {
 
             {/* Drawer Nav Items */}
             <div className="drawer-nav-list">
-              {MENU_ITEMS.map((item) => {
+              {visibleMenuItems.map((item) => {
                 const isActive = pathname === item.href;
                 const Icon = item.icon;
                 return (
@@ -356,38 +481,107 @@ export function Navbar() {
                     href={item.href}
                     onClick={() => setMenuOpen(false)}
                     className={`drawer-nav-item ${isActive ? "active" : ""}`}
+                    style={{
+                      display: "flex",
+                      flexDirection: "row",
+                      alignItems: "center",
+                      gap: "11px",
+                      width: "100%",
+                      whiteSpace: "nowrap",
+                    }}
                   >
-                    <span className="menu-panel-item-icon">
+                    <span
+                      className="menu-panel-item-icon"
+                      aria-hidden="true"
+                      style={{
+                        width: "20px",
+                        height: "20px",
+                        minWidth: "20px",
+                        display: "inline-flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        flexShrink: 0,
+                      }}
+                    >
                       <Icon size={18} />
                     </span>
-                    <span>{item.label}</span>
+                    <span
+                      className="drawer-nav-item-label"
+                      style={{
+                        flex: 1,
+                        whiteSpace: "nowrap",
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                        textAlign: "left",
+                      }}
+                    >
+                      {item.label}
+                    </span>
                   </Link>
                 );
               })}
             </div>
 
-            {/* Visual Divider */}
-            <div className="menu-panel-divider" style={{ margin: "0.25rem 0.75rem" }} />
-
-            {/* Discover Feed Section Shortcuts */}
-            <div className="drawer-sections-group" style={{ padding: "0 0.75rem", display: "flex", flexDirection: "column", gap: "0.25rem" }}>
-              <div className="menu-sections-heading" style={{ padding: "0.25rem 0.75rem" }}>Discover Feed</div>
-              {DISCOVER_SECTIONS.map((sec) => (
-                <a
-                  key={sec.sectionId}
-                  href={sec.href}
-                  onClick={(e) => handleSectionClick(e, sec.sectionId)}
-                  className="drawer-nav-item"
+            {/* Discover Feed Section Shortcuts — Authenticated Only */}
+            {isAuthenticated && (
+              <>
+                <div className="menu-panel-divider" style={{ margin: "0.25rem 0.75rem" }} />
+                <div
+                  className="drawer-sections-group"
+                  style={{ padding: "0 0.75rem", display: "flex", flexDirection: "column", gap: "0.25rem" }}
                 >
-                  <span className="menu-section-icon" aria-hidden="true">
-                    {sec.emoji}
-                  </span>
-                  <span>{sec.label}</span>
-                </a>
-              ))}
-            </div>
+                  <div className="menu-sections-heading" style={{ padding: "0.25rem 0.75rem" }}>
+                    Discover Feed
+                  </div>
+                  {DISCOVER_SECTIONS.map((sec) => (
+                    <a
+                      key={sec.sectionId}
+                      href={sec.href}
+                      onClick={(e) => handleSectionClick(e, sec.href)}
+                      className="drawer-nav-item"
+                      style={{
+                        display: "flex",
+                        flexDirection: "row",
+                        alignItems: "center",
+                        gap: "11px",
+                        width: "100%",
+                        whiteSpace: "nowrap",
+                      }}
+                    >
+                      <span
+                        className="menu-section-icon"
+                        aria-hidden="true"
+                        style={{
+                          width: "20px",
+                          height: "20px",
+                          minWidth: "20px",
+                          display: "inline-flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          flexShrink: 0,
+                        }}
+                      >
+                        {sec.emoji}
+                      </span>
+                      <span
+                        className="drawer-nav-item-label"
+                        style={{
+                          flex: 1,
+                          whiteSpace: "nowrap",
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                          textAlign: "left",
+                        }}
+                      >
+                        {sec.label}
+                      </span>
+                    </a>
+                  ))}
+                </div>
+              </>
+            )}
 
-            {/* Visual Divider */}
+            {/* Visual Divider before Account & Appearance */}
             <div className="menu-panel-divider" style={{ margin: "0.25rem 0.75rem" }} />
 
             {/* Mobile Drawer Footer Actions */}
@@ -580,7 +774,7 @@ export function Navbar() {
           position: absolute;
           top: calc(100% + 8px);
           right: 0;
-          width: 280px;
+          width: 290px;
           max-height: calc(100vh - 80px);
           overflow-y: auto;
           background-color: var(--bg-surface);
@@ -591,12 +785,15 @@ export function Navbar() {
           z-index: 100;
           animation: desktopDropdownFade 0.2s cubic-bezier(0.16, 1, 0.3, 1) forwards;
           transform-origin: top right;
+          box-sizing: border-box;
         }
 
         .menu-sections-group {
           display: flex;
           flex-direction: column;
-          gap: 0.2rem;
+          gap: 0.25rem;
+          width: 100%;
+          box-sizing: border-box;
         }
 
         .menu-sections-heading {
@@ -608,32 +805,29 @@ export function Navbar() {
           padding: 0.375rem 0.75rem 0.2rem;
         }
 
-        .menu-section-icon {
-          font-size: 1rem;
-          display: inline-flex;
-          align-items: center;
-          justify-content: center;
-          width: 20px;
-          flex-shrink: 0;
-        }
-
         .menu-panel-list {
           display: flex;
           flex-direction: column;
           gap: 0.25rem;
+          width: 100%;
+          box-sizing: border-box;
         }
 
         .menu-panel-item {
-          display: flex;
-          align-items: center;
-          gap: 0.75rem;
+          display: flex !important;
+          flex-direction: row !important;
+          align-items: center !important;
+          flex-wrap: nowrap !important;
+          width: 100% !important;
+          box-sizing: border-box !important;
+          gap: 11px;
           padding: 0.55rem 0.75rem;
           border-radius: var(--radius-sm);
           color: var(--text-main);
-          font-size: 0.9375rem;
-          font-weight: 500;
           text-decoration: none;
+          white-space: nowrap;
           transition: background-color 0.15s ease, color 0.15s ease;
+          cursor: pointer;
         }
 
         .menu-panel-item:hover {
@@ -653,11 +847,47 @@ export function Navbar() {
         }
 
         .menu-panel-item-icon {
-          display: flex;
-          align-items: center;
-          justify-content: center;
+          width: 20px;
+          height: 20px;
+          min-width: 20px;
+          display: inline-flex !important;
+          align-items: center !important;
+          justify-content: center !important;
+          flex-shrink: 0 !important;
           color: var(--text-muted);
           transition: color 0.15s ease;
+          line-height: 1;
+        }
+
+        .menu-panel-item-icon svg {
+          width: 18px;
+          height: 18px;
+          display: block;
+          flex-shrink: 0;
+        }
+
+        .menu-section-icon {
+          width: 20px;
+          height: 20px;
+          min-width: 20px;
+          font-size: 1rem;
+          line-height: 1;
+          display: inline-flex !important;
+          align-items: center !important;
+          justify-content: center !important;
+          flex-shrink: 0 !important;
+        }
+
+        .menu-panel-item-label {
+          flex: 1;
+          font-size: 0.9375rem;
+          font-weight: 500;
+          line-height: 1.25;
+          color: inherit;
+          white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          text-align: left;
         }
 
         .menu-panel-item:hover .menu-panel-item-icon,
@@ -798,8 +1028,8 @@ export function Navbar() {
           top: 0;
           left: 0;
           bottom: 0;
-          width: 280px;
-          max-width: 82vw;
+          width: 290px;
+          max-width: 85vw;
           background-color: var(--bg-surface);
           border-right: 1px solid var(--border-color);
           box-shadow: var(--shadow-lg);
@@ -808,6 +1038,7 @@ export function Navbar() {
           z-index: 1000;
           overflow-y: auto;
           animation: mobileSlideInLeft 0.25s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+          box-sizing: border-box;
         }
 
         .drawer-header {
@@ -843,12 +1074,18 @@ export function Navbar() {
           padding: 0.875rem 0.75rem;
           gap: 0.25rem;
           flex: 1;
+          width: 100%;
+          box-sizing: border-box;
         }
 
         .drawer-nav-item {
-          display: flex;
-          align-items: center;
-          gap: 0.75rem;
+          display: flex !important;
+          flex-direction: row !important;
+          align-items: center !important;
+          flex-wrap: nowrap !important;
+          width: 100% !important;
+          box-sizing: border-box !important;
+          gap: 11px;
           padding: 0.75rem 1rem;
           min-height: 44px;
           border-radius: var(--radius-sm);
@@ -856,7 +1093,9 @@ export function Navbar() {
           font-size: 0.9375rem;
           font-weight: 500;
           text-decoration: none;
+          white-space: nowrap;
           transition: background-color 0.15s ease, color 0.15s ease;
+          cursor: pointer;
         }
 
         .drawer-nav-item:hover,
@@ -864,6 +1103,53 @@ export function Navbar() {
           background-color: var(--bg-subtle);
           color: var(--primary);
           font-weight: 600;
+        }
+
+        .drawer-nav-item:focus-visible {
+          outline: 2px solid var(--border-focus);
+          outline-offset: -1px;
+        }
+
+        .drawer-nav-item .menu-panel-item-icon {
+          width: 20px;
+          height: 20px;
+          min-width: 20px;
+          display: inline-flex !important;
+          align-items: center !important;
+          justify-content: center !important;
+          flex-shrink: 0 !important;
+          color: var(--text-muted);
+        }
+
+        .drawer-nav-item .menu-panel-item-icon svg {
+          width: 18px;
+          height: 18px;
+          display: block;
+          flex-shrink: 0;
+        }
+
+        .drawer-nav-item .menu-section-icon {
+          width: 20px;
+          height: 20px;
+          min-width: 20px;
+          font-size: 1rem;
+          line-height: 1;
+          display: inline-flex !important;
+          align-items: center !important;
+          justify-content: center !important;
+          flex-shrink: 0 !important;
+        }
+
+        .drawer-nav-item-label {
+          flex: 1;
+          font-size: 0.9375rem;
+          font-weight: 500;
+          line-height: 1.25;
+          color: inherit;
+          white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          text-align: left;
         }
 
         .drawer-nav-item:hover .menu-panel-item-icon,

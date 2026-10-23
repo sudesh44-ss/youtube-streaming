@@ -29,6 +29,26 @@ export async function GET(req: NextRequest) {
     const limit = Math.min(parseInt(searchParams.get("limit") || "20", 10), 20);
     const pageToken = searchParams.get("pageToken") || undefined;
 
+    const apiKey = getUserProviderKey(session?.user?.id, "youtube") || undefined;
+
+    // Strict Requirement: Search MUST remain blank until a valid YouTube API key is saved.
+    // Do not return placeholder videos, demo cards, or mock channels when no key exists.
+    if (!apiKey) {
+      return NextResponse.json({
+        success: true,
+        requiresApiKey: true,
+        query,
+        category,
+        mode,
+        videoType,
+        count: 0,
+        items: [],
+        nextPageToken: undefined,
+        channels: [],
+        message: "Connect your YouTube API key in Settings to search videos and channels.",
+      });
+    }
+
     // Save search history if query is provided and user is authenticated
     if (session && query.trim().length > 1 && !pageToken) {
       try {

@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { cookies } from "next/headers";
 import { createServerSupabaseClient, isSupabaseServerConfigured } from "@/lib/supabase/server";
 
 export async function GET(request: NextRequest) {
@@ -6,7 +7,13 @@ export async function GET(request: NextRequest) {
   const code = requestUrl.searchParams.get("code");
   const error = requestUrl.searchParams.get("error");
   const errorDescription = requestUrl.searchParams.get("error_description");
-  const next = requestUrl.searchParams.get("next") || "/dashboard";
+  const rawNext = requestUrl.searchParams.get("next") || "/dashboard";
+
+  // Open-redirect safeguard: validate that 'next' is a valid internal relative path
+  let next = "/dashboard";
+  if (rawNext && rawNext.startsWith("/") && !rawNext.startsWith("//") && !rawNext.includes("\\")) {
+    next = rawNext;
+  }
 
   // Handle denied consent or cancellation from Google OAuth provider
   if (error) {
@@ -28,8 +35,13 @@ export async function GET(request: NextRequest) {
         return NextResponse.redirect(redirectUrl);
       }
 
-      // Successful authentication redirect
-      return NextResponse.redirect(new URL(next, requestUrl.origin));
+      // Successful authentication redirect with session cookies explicitly preserved
+      const redirectResponse = NextResponse.redirect(new URL(next, requestUrl.origin));
+      const cookieStore = await cookies();
+      cookieStore.getAll().forEach((c) => {
+        redirectResponse.cookies.set(c.name, c.value);
+      });
+      return redirectResponse;
     } catch (err) {
       console.error("Unexpected error in auth callback:", err);
       const redirectUrl = new URL("/auth/signin", requestUrl.origin);
@@ -38,6 +50,6 @@ export async function GET(request: NextRequest) {
     }
   }
 
-  // Fallback if code is missing
+  // Fallback if code is missing or configuration is incomplete
   return NextResponse.redirect(new URL("/auth/signin", requestUrl.origin));
 }

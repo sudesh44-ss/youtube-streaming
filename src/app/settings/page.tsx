@@ -55,20 +55,22 @@ export default function SettingsPage() {
         fetch("/api/providers/status"),
       ]);
 
-      if (sessionRes.status === 401) {
+      if (sessionRes.status === 401 || sessionRes.status === 403) {
         router.push("/auth/signin");
         return;
       }
 
-      const sessionData = await sessionRes.json();
-      if (!sessionData.session?.user) {
-        router.push("/auth/signin");
-        return;
-      }
+      if (sessionRes.ok) {
+        const sessionData = await sessionRes.json();
+        if (!sessionData.session?.user) {
+          router.push("/auth/signin");
+          return;
+        }
 
-      setUser(sessionData.session.user);
-      setPreferences(sessionData.session.preferences);
-      setDisplayName(sessionData.session.user.name || "");
+        setUser(sessionData.session.user);
+        setPreferences(sessionData.session.preferences);
+        setDisplayName(sessionData.session.user.name || "");
+      }
 
       if (provRes.ok) {
         const provData = await provRes.json();

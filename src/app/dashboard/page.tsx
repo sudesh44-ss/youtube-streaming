@@ -9,10 +9,10 @@ import { SearchBar } from "@/components/SearchBar";
 import { ContentCard } from "@/components/ContentCard";
 import { ChannelCard } from "@/components/ChannelCard";
 import { ContentModal } from "@/components/ContentModal";
-import { FeaturedBanner } from "@/components/FeaturedBanner";
-import { StreamingVideoRow } from "@/components/StreamingVideoRow";
+import { ApiKeyRequirement } from "@/components/ApiKeyRequirement";
 import { SlidersHorizontal, RefreshCw, AlertCircle, Compass, Bookmark, Users, Video } from "lucide-react";
 import Link from "next/link";
+import { addToSearchHistory } from "@/lib/local-storage";
 
 export default function DashboardPage() {
   const router = useRouter();
@@ -34,6 +34,8 @@ export default function DashboardPage() {
   const [items, setItems] = useState<NormalizedContentItem[]>([]);
   const [continueWatchingItems, setContinueWatchingItems] = useState<NormalizedContentItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [requiresApiKey, setRequiresApiKey] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   // Pagination for search results
@@ -82,11 +84,21 @@ export default function DashboardPage() {
   // Request race-condition guard
   const requestIdRef = useRef(0);
 
-  // Check authentication
+  // Check authentication with resilient network drop tolerance
   useEffect(() => {
+    let isMounted = true;
     fetch("/api/auth/session")
-      .then((res) => res.json())
+      .then((res) => {
+        if (!res.ok) {
+          if (res.status === 401 || res.status === 403) {
+            router.push("/auth/signin");
+          }
+          return null;
+        }
+        return res.json();
+      })
       .then((data) => {
+        if (!isMounted || !data) return;
         if (!data.session?.user) {
           router.push("/auth/signin");
         } else {
@@ -96,8 +108,18 @@ export default function DashboardPage() {
           }
         }
       })
-      .catch(() => router.push("/auth/signin"))
-      .finally(() => setAuthLoading(false));
+      .catch((err) => {
+        // Network drop or temporary interruption:
+        // Do NOT automatically eject user to signin. Log and preserve resilience.
+        console.warn("Session check encountered temporary network interruption:", err);
+      })
+      .finally(() => {
+        if (isMounted) setAuthLoading(false);
+      });
+
+    return () => {
+      isMounted = false;
+    };
   }, [router]);
 
   // Load real watch progress for Continue Watching row
@@ -169,6 +191,15 @@ export default function DashboardPage() {
 
         // Stale response guard: discard if a newer request was dispatched
         if (currentReqId !== requestIdRef.current) return;
+
+        if (data.requiresApiKey) {
+          setRequiresApiKey(true);
+          setItems([]);
+          setChannelResults([]);
+          return;
+        }
+
+        setRequiresApiKey(false);
 
         if (!res.ok) {
           if (res.status === 429) {
@@ -272,38 +303,36 @@ export default function DashboardPage() {
     }
   };
 
-  // Dynamic Feed Fetcher for Streaming Discovery Rows
+  // Unified Feed Fetcher (fetches up to 20 mixed videos)
   const fetchFeed = useCallback(async (refresh = false) => {
-    setLoading(true);
+    if (refresh) setRefreshing(true);
+    else setLoading(true);
     setError(null);
     try {
       const res = await fetch(`/api/content/feed${refresh ? "?refresh=true" : ""}`);
       const data = await res.json();
-      if (res.ok && data.success) {
-        setFeedSections({
-          trending: data.trending || [],
-          recommended: data.recommended || [],
-          music: data.music || [],
-          gaming: data.gaming || [],
-          study: data.study || [],
-        });
-        const combined = [
-          ...(data.trending || []),
-          ...(data.recommended || []),
-          ...(data.music || []),
-          ...(data.gaming || []),
-          ...(data.study || []),
-        ];
-        setItems(combined);
+
+      if (data.requiresApiKey) {
+        setRequiresApiKey(true);
+        setItems([]);
+        return;
+      }
+
+      setRequiresApiKey(false);
+
+      if (!res.ok) {
+        setError(data.error || "Failed to load discovery feed.");
       } else {
-        fetchContent();
+        const feedItems = Array.isArray(data.items) ? data.items : [];
+        setItems(feedItems.slice(0, 20));
       }
     } catch {
-      fetchContent();
+      setError("Network error communicating with discovery service.");
     } finally {
       setLoading(false);
+      setRefreshing(false);
     }
-  }, [fetchContent]);
+  }, []);
 
   const activeCategoryDef = CATEGORIES.find((c) => c.id === selectedCategory);
   const isStreamingDefaultView = mode === "normal" && !submittedQuery.trim() && !selectedCategory;
@@ -318,25 +347,23 @@ export default function DashboardPage() {
     }
   }, [user, isStreamingDefaultView, fetchFeed, fetchContent]);
 
-  // Smooth scroll handler when hash is present in URL
+  // Restore search query from URL params (e.g. from Search History click)
   useEffect(() => {
-    const handleHash = () => {
-      const hash = window.location.hash.replace("#", "");
-      if (hash) {
-        const el = document.getElementById(hash);
-        if (el) {
-          el.scrollIntoView({ behavior: "smooth", block: "start" });
-        }
+    if (typeof window !== "undefined") {
+      const params = new URLSearchParams(window.location.search);
+      const q = params.get("q");
+      if (q && q.trim()) {
+        const trimmed = q.trim();
+        setSearchQuery(trimmed);
+        setSubmittedQuery(trimmed);
+        const cat = params.get("category") || undefined;
+        const m = (params.get("mode") as BrowsingMode) || "normal";
+        if (cat) setSelectedCategory(cat);
+        if (m) setMode(m);
+        fetchContent(trimmed, videoType);
       }
-    };
-
-    if (!loading && isStreamingDefaultView) {
-      handleHash();
     }
-
-    window.addEventListener("hashchange", handleHash);
-    return () => window.removeEventListener("hashchange", handleHash);
-  }, [loading, isStreamingDefaultView]);
+  }, [fetchContent, videoType]);
 
   // Handle Explicit Search Submission
   const handleSearchSubmit = (query: string) => {
@@ -345,6 +372,13 @@ export default function DashboardPage() {
     setSubmittedQuery(trimmed);
     setNextPageToken(undefined);
     setSearchTab("videos");
+    addToSearchHistory({
+      query: trimmed,
+      searchMode: mode,
+      searchTab: "videos",
+      category: selectedCategory,
+      videoType: videoType !== "all" ? videoType : undefined,
+    });
     fetchContent(trimmed, videoType);
   };
 
@@ -446,7 +480,7 @@ export default function DashboardPage() {
       />
 
       {/* Filter and Sort Status Bar (Active during search or category mode) */}
-      {(!isStreamingDefaultView || submittedQuery) && (
+      {!requiresApiKey && (!isStreamingDefaultView || submittedQuery) && (
         <div
           style={{
             display: "flex",
@@ -544,150 +578,48 @@ export default function DashboardPage() {
         </div>
       )}
 
-      {/* STREAMING DASHBOARD VIEW (Default Normal Browsing) */}
-      {!loading && isStreamingDefaultView && items.length > 0 && (
+      {/* API Key Missing State */}
+      {requiresApiKey && (
+        <ApiKeyRequirement />
+      )}
+
+      {/* UNIFIED 20-VIDEO CONTINUOUS FEED GRID */}
+      {!requiresApiKey && !loading && isStreamingDefaultView && items.length > 0 && (
         <div>
-          {/* A. Featured Video Cinematic Banner */}
-          <FeaturedBanner
-            items={feedSections.trending.length > 0 ? feedSections.trending.slice(0, 5) : items.slice(0, 5)}
-            onPlay={handleSelectItem}
-          />
-
-          {/* B. Trending on YouTube */}
-          <StreamingVideoRow
-            id="trending"
-            title="Trending on YouTube"
-            icon="🔥"
-            items={feedSections.trending.length > 0 ? feedSections.trending : items.slice(0, 6)}
-            onSelect={handleSelectItem}
-            onViewAll={() => {
-              handleClearSearch();
-              handleSearchSubmit("trending");
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              marginBottom: "1.25rem",
             }}
-          />
-
-          {/* C. Continue Watching (Rendered only when real playback progress exists) */}
-          {continueWatchingItems.length > 0 && (
-            <StreamingVideoRow
-              title="Continue Watching"
-              icon="🕒"
-              items={continueWatchingItems}
-              onSelect={handleSelectItem}
-              showProgress={true}
-              onViewAll={() => router.push("/dashboard/saved")}
-            />
-          )}
-
-          {/* D. Recommended for You */}
-          <StreamingVideoRow
-            id="recommended"
-            title="Recommended for You"
-            icon="✨"
-            items={feedSections.recommended.length > 0 ? feedSections.recommended : items.slice(6, 12)}
-            onSelect={handleSelectItem}
-            onViewAll={() => {
-              handleClearSearch();
-              fetchFeed(true);
-            }}
-          />
-
-          {/* E. YouTube Music & Audio Row */}
-          {(feedSections.music.length > 0 || items.some((i) => i.category === "music")) && (
-            <StreamingVideoRow
-              id="music"
-              title="Music & Live Performances"
-              icon="🎵"
-              items={
-                feedSections.music.length > 0
-                  ? feedSections.music
-                  : items.filter((i) => i.category === "music").slice(0, 6)
-              }
-              onSelect={handleSelectItem}
-              onViewAll={() => {
-                setMode("category");
-                handleCategoryChange("music");
-              }}
-            />
-          )}
-
-          {/* Gaming Row */}
-          {(feedSections.gaming.length > 0 || items.some((i) => i.category === "gaming")) && (
-            <StreamingVideoRow
-              id="gaming"
-              title="Gaming & Highlights"
-              icon="🎮"
-              items={
-                feedSections.gaming.length > 0
-                  ? feedSections.gaming
-                  : items.filter((i) => i.category === "gaming").slice(0, 6)
-              }
-              onSelect={handleSelectItem}
-              onViewAll={() => {
-                setMode("category");
-                handleCategoryChange("gaming");
-              }}
-            />
-          )}
-
-          {/* Study & Education Row */}
-          {(feedSections.study.length > 0 || items.some((i) => i.category === "study")) && (
-            <StreamingVideoRow
-              id="study"
-              title="Study & Lectures"
-              icon="📚"
-              items={
-                feedSections.study.length > 0
-                  ? feedSections.study
-                  : items.filter((i) => i.category === "study").slice(0, 6)
-              }
-              onSelect={handleSelectItem}
-              onViewAll={() => {
-                setMode("category");
-                handleCategoryChange("study");
-              }}
-            />
-          )}
-
-          {/* F. More Recommended Videos (Incremental Batch Loading) */}
-          {moreRecommended.length > 0 && (
-            <StreamingVideoRow
-              id="more-recommended"
-              title="More Recommended for You"
-              icon="✨"
-              items={moreRecommended}
-              onSelect={handleSelectItem}
-            />
-          )}
-
-          {/* Incremental Recommendation Batch Loading Trigger */}
-          <div style={{ textAlign: "center", marginTop: "1rem", marginBottom: "3rem" }}>
+          >
+            <span style={{ fontSize: "0.875rem", color: "var(--text-muted)", fontWeight: 500 }}>
+              Mixed Discovery Feed ({items.length} videos)
+            </span>
             <button
               type="button"
-              onClick={handleLoadMoreFeed}
-              disabled={loadingMoreFeed}
-              className="btn btn-outline"
-              style={{
-                minWidth: "240px",
-                padding: "0.625rem 1.75rem",
-                fontWeight: 600,
-                borderRadius: "var(--radius-full)",
-              }}
+              onClick={() => fetchFeed(true)}
+              disabled={refreshing || loading}
+              className="btn btn-outline btn-sm"
+              style={{ display: "inline-flex", alignItems: "center", gap: "0.375rem" }}
+              title="Refresh discovery feed"
             >
-              {loadingMoreFeed ? (
-                <>
-                  <RefreshCw size={14} className="spin" style={{ marginRight: "0.5rem" }} />
-                  <span>Discovering More Videos...</span>
-                </>
-              ) : (
-                <span>Load More Recommendations</span>
-              )}
+              <RefreshCw size={13} className={refreshing ? "spin" : ""} />
+              <span>Refresh Feed</span>
             </button>
+          </div>
+
+          <div className="search-results-grid">
+            {items.map((item) => (
+              <ContentCard key={item.id} item={item} onSelect={handleSelectItem} />
+            ))}
           </div>
         </div>
       )}
 
       {/* Search Result Tabs: Videos vs Channels */}
-      {!loading && submittedQuery && (
+      {!requiresApiKey && !loading && submittedQuery && (
         <div
           style={{
             display: "flex",
@@ -725,7 +657,7 @@ export default function DashboardPage() {
       )}
 
       {/* CHANNELS TAB RESULTS */}
-      {!loading && submittedQuery && searchTab === "channels" && (
+      {!requiresApiKey && !loading && submittedQuery && searchTab === "channels" && (
         <div style={{ marginBottom: "3rem" }}>
           {channelResults.length > 0 ? (
             <div
@@ -751,7 +683,7 @@ export default function DashboardPage() {
       )}
 
       {/* SEARCH / CATEGORY MODE FILTERED RESULTS GRID (VIDEOS TAB) */}
-      {!loading && !isStreamingDefaultView && searchTab === "videos" && items.length > 0 && (
+      {!requiresApiKey && !loading && !isStreamingDefaultView && searchTab === "videos" && items.length > 0 && (
         <div>
           <div className="search-results-grid">
             {items.map((item) => (
@@ -793,7 +725,7 @@ export default function DashboardPage() {
       )}
 
       {/* Empty State */}
-      {!loading && items.length === 0 && (!submittedQuery || searchTab === "videos") && !error && (
+      {!requiresApiKey && !loading && items.length === 0 && (!submittedQuery || searchTab === "videos") && !error && (
         <div
           className="card"
           style={{

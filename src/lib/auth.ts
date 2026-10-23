@@ -104,11 +104,17 @@ export async function getCurrentSession(): Promise<UserSession | null> {
         const supabase = await createServerSupabaseClient();
         const { data: { user: sbUser }, error: sbErr } = await supabase.auth.getUser();
         if (sbUser && !sbErr) {
-          const { data: prefData } = await supabase
-            .from("user_preferences")
-            .select("*")
-            .eq("user_id", sbUser.id)
-            .maybeSingle();
+          let prefData: any = null;
+          try {
+            const res = await supabase
+              .from("user_preferences")
+              .select("*")
+              .eq("user_id", sbUser.id)
+              .maybeSingle();
+            prefData = res.data;
+          } catch {
+            // Non-fatal preferences fallback
+          }
 
           return {
             user: {

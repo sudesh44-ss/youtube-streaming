@@ -21,6 +21,7 @@ import {
 } from "lucide-react";
 import { CATEGORIES } from "@/lib/types";
 import { getSubcategoryPalette } from "@/lib/pastel-colors";
+import { ApiKeyRequirement } from "@/components/ApiKeyRequirement";
 
 export default function LandingPage() {
   const [demoMode, setDemoMode] = useState<"normal" | "category">("normal");
@@ -154,78 +155,9 @@ export default function LandingPage() {
               </div>
             </div>
 
-            {/* Mock Content Showcase Grid */}
+            {/* YouTube API Key Requirement Gate */}
             <div style={{ padding: "1.5rem" }}>
-              <div
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))",
-                  gap: "1.25rem",
-                  textAlign: "left",
-                }}
-              >
-                {demoMode === "normal" ? (
-                  <>
-                    <div className="card" style={{ padding: "1rem" }}>
-                      <span className="badge badge-rose" style={{ marginBottom: "0.5rem" }}>Study</span>
-                      <h4 style={{ fontSize: "0.9375rem", fontWeight: 600, marginBottom: "0.375rem" }}>
-                        Financial Accounting & Ledger Principles
-                      </h4>
-                      <p style={{ fontSize: "0.8125rem", color: "var(--text-muted)" }}>
-                        Comprehensive lecture on double-entry bookkeeping and cash flows.
-                      </p>
-                    </div>
-                    <div className="card" style={{ padding: "1rem" }}>
-                      <span className="badge badge-emerald" style={{ marginBottom: "0.5rem" }}>Music</span>
-                      <h4 style={{ fontSize: "0.9375rem", fontWeight: 600, marginBottom: "0.375rem" }}>
-                        Lofi Hip Hop Radio — 24/7 Focus Beats
-                      </h4>
-                      <p style={{ fontSize: "0.8125rem", color: "var(--text-muted)" }}>
-                        Peaceful instrumental melodies curated for coding and study.
-                      </p>
-                    </div>
-                    <div className="card" style={{ padding: "1rem" }}>
-                      <span className="badge badge-cyan" style={{ marginBottom: "0.5rem" }}>Movies</span>
-                      <h4 style={{ fontSize: "0.9375rem", fontWeight: 600, marginBottom: "0.375rem" }}>
-                        Dune: Part Two (TMDB Preview)
-                      </h4>
-                      <p style={{ fontSize: "0.8125rem", color: "var(--text-muted)" }}>
-                        Paul Atreides unites with the Fremen on Arrakis. Rating: 8.4/10.
-                      </p>
-                    </div>
-                  </>
-                ) : (
-                  <>
-                    <div className="card" style={{ padding: "1rem", borderColor: "var(--primary)" }}>
-                      <span className="badge badge-cyan" style={{ marginBottom: "0.5rem" }}>Study • Accounting</span>
-                      <h4 style={{ fontSize: "0.9375rem", fontWeight: 600, marginBottom: "0.375rem" }}>
-                        Double-Entry Bookkeeping Deep Dive
-                      </h4>
-                      <p style={{ fontSize: "0.8125rem", color: "var(--text-muted)" }}>
-                        Strictly isolated study material excluding entertainment media.
-                      </p>
-                    </div>
-                    <div className="card" style={{ padding: "1rem", borderColor: "var(--primary)" }}>
-                      <span className="badge badge-cyan" style={{ marginBottom: "0.5rem" }}>Study • Economics</span>
-                      <h4 style={{ fontSize: "0.9375rem", fontWeight: 600, marginBottom: "0.375rem" }}>
-                        Microeconomics: Elasticity & Market Equilibrium
-                      </h4>
-                      <p style={{ fontSize: "0.8125rem", color: "var(--text-muted)" }}>
-                        University syllabus lecture series from leading institutions.
-                      </p>
-                    </div>
-                    <div className="card" style={{ padding: "1rem", borderColor: "var(--primary)" }}>
-                      <span className="badge badge-cyan" style={{ marginBottom: "0.5rem" }}>Study • Business Law</span>
-                      <h4 style={{ fontSize: "0.9375rem", fontWeight: 600, marginBottom: "0.375rem" }}>
-                        Contract Formation & Commercial Tort Law
-                      </h4>
-                      <p style={{ fontSize: "0.8125rem", color: "var(--text-muted)" }}>
-                        Essential legal frameworks for commerce and legal students.
-                      </p>
-                    </div>
-                  </>
-                )}
-              </div>
+              <ApiKeyRequirement style={{ margin: "0 auto", maxWidth: "100%", boxShadow: "none", border: "none" }} />
             </div>
           </div>
         </div>

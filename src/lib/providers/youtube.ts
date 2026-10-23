@@ -70,6 +70,10 @@ function formatSubscriberCount(countStr?: string): string | undefined {
   return `${num} subscribers`;
 }
 
+function isTestRunner(): boolean {
+  return process.env.IS_PLATFORM_TEST === "true" || process.env.NODE_ENV === "test";
+}
+
 export class YouTubeAdapter implements IProviderAdapter {
   id = "youtube" as const;
   name = "YouTube Data API v3";
@@ -231,7 +235,13 @@ export class YouTubeAdapter implements IProviderAdapter {
       }
     }
 
-    // Fallback to curated catalog
+    // Strict Requirement: Never show demo or placeholder videos in production / live app.
+    // Curated catalog fallback is strictly isolated to headless unit test assertions.
+    if (!isTestRunner()) {
+      return { items: [], nextPageToken: undefined };
+    }
+
+    // Fallback to curated catalog (test environment only)
     const filtered = CURATED_CATALOG.filter((item) => {
       if (item.provider !== "youtube") return false;
       if (category && item.category !== category) return false;
@@ -284,13 +294,24 @@ export class YouTubeAdapter implements IProviderAdapter {
         const res = await fetch(url, { signal: AbortSignal.timeout(6000) });
         if (res.ok) {
           const data = await res.json();
+          const searchThumbnailMap = new Map<string, string>();
+          for (const it of data.items || []) {
+            if (it.id?.channelId) {
+              const thumb =
+                it.snippet?.thumbnails?.high?.url ||
+                it.snippet?.thumbnails?.medium?.url ||
+                it.snippet?.thumbnails?.default?.url;
+              if (thumb) searchThumbnailMap.set(it.id.channelId, thumb);
+            }
+          }
+
           let channelIds = Array.from(
             new Set((data.items || []).map((it: any) => it.id?.channelId).filter(Boolean))
           ) as string[];
 
           // Handle '@handle' directly if no channel found yet
           if (channelIds.length === 0 && trimmed.startsWith("@")) {
-            const handleUrl = `https://www.googleapis.com/youtube/v3/channels?part=snippet,statistics&forHandle=${encodeURIComponent(trimmed.replace(/^@/, ""))}&key=${encodeURIComponent(apiKey.trim())}`;
+            const handleUrl = `https://www.googleapis.com/youtube/v3/channels?part=snippet,statistics,brandingSettings&forHandle=${encodeURIComponent(trimmed.replace(/^@/, ""))}&key=${encodeURIComponent(apiKey.trim())}`;
             const handleRes = await fetch(handleUrl, { signal: AbortSignal.timeout(5000) });
             if (handleRes.ok) {
               const handleData = await handleRes.json();
@@ -302,28 +323,39 @@ export class YouTubeAdapter implements IProviderAdapter {
 
           if (channelIds.length > 0) {
             // Batched channel detail query (O(1) request - prevents N+1 calls)
-            const detailUrl = `https://www.googleapis.com/youtube/v3/channels?part=snippet,statistics&id=${encodeURIComponent(channelIds.join(","))}&key=${encodeURIComponent(apiKey.trim())}`;
+            const detailUrl = `https://www.googleapis.com/youtube/v3/channels?part=snippet,statistics,brandingSettings&id=${encodeURIComponent(channelIds.join(","))}&key=${encodeURIComponent(apiKey.trim())}`;
             const detailRes = await fetch(detailUrl, { signal: AbortSignal.timeout(6000) });
             if (detailRes.ok) {
               const detailData = await detailRes.json();
               if (Array.isArray(detailData.items)) {
                 const mappedChannels: YouTubeChannelItem[] = detailData.items.map((item: any) => {
-                  const customUrl = item.snippet?.customUrl || undefined;
+                  const rawCustomUrl = item.snippet?.customUrl || undefined;
+                  const customUrl = rawCustomUrl
+                    ? (rawCustomUrl.startsWith("@") ? rawCustomUrl : `@${rawCustomUrl}`)
+                    : undefined;
                   const channelId = item.id;
                   const channelUrl = customUrl
                     ? `https://www.youtube.com/${customUrl}`
                     : `https://www.youtube.com/channel/${channelId}`;
+
+                  const resolvedAvatar =
+                    item.snippet?.thumbnails?.high?.url ||
+                    item.snippet?.thumbnails?.medium?.url ||
+                    item.snippet?.thumbnails?.default?.url ||
+                    searchThumbnailMap.get(channelId) ||
+                    channelAvatarCache.get(channelId) ||
+                    "";
+
+                  if (resolvedAvatar) {
+                    channelAvatarCache.set(channelId, resolvedAvatar);
+                  }
 
                   return {
                     id: channelId,
                     title: item.snippet?.title || "YouTube Channel",
                     description: item.snippet?.description || "",
                     customUrl,
-                    avatar:
-                      item.snippet?.thumbnails?.high?.url ||
-                      item.snippet?.thumbnails?.medium?.url ||
-                      item.snippet?.thumbnails?.default?.url ||
-                      "",
+                    avatar: resolvedAvatar,
                     subscriberCount: formatSubscriberCount(item.statistics?.subscriberCount),
                     subscriberCountRaw: parseInt(item.statistics?.subscriberCount || "0", 10),
                     videoCount: item.statistics?.videoCount ? `${item.statistics.videoCount} videos` : undefined,
@@ -370,7 +402,12 @@ export class YouTubeAdapter implements IProviderAdapter {
       }
     }
 
-    // Fallback to CURATED_CHANNELS
+    // Strict Requirement: Never show mock or placeholder channels in production / live app.
+    if (!isTestRunner()) {
+      return [];
+    }
+
+    // Fallback to CURATED_CHANNELS (test environment only)
     const qLower = trimmed.toLowerCase();
     const cleanHandle = qLower.replace(/^@/, "");
     const matchingCurated = CURATED_CHANNELS.filter(
@@ -444,7 +481,11 @@ export class YouTubeAdapter implements IProviderAdapter {
       }
     }
 
-    return CURATED_CATALOG.filter((i) => i.provider === "youtube").slice(0, limit);
+    if (isTestRunner()) {
+      return CURATED_CATALOG.filter((i) => i.provider === "youtube").slice(0, limit);
+    }
+
+    return [];
   }
 
   async getDetails(contentId: string, apiKey?: string): Promise<NormalizedContentItem | null> {

@@ -1,9 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import Link from "next/link";
 import { YouTubeChannelItem } from "@/lib/types";
-import { Users, Video, ExternalLink, Check, BellRing, RefreshCw } from "lucide-react";
+import { Users, ExternalLink, Check, BellRing, RefreshCw } from "lucide-react";
 
 interface ChannelCardProps {
   channel: YouTubeChannelItem;
@@ -59,6 +58,8 @@ export function ChannelCard({ channel, onSubscriptionChange }: ChannelCardProps)
       setLoading(false);
     }
   };
+
+  const hasSubscriptionAction = status === "subscribed" || status === "not_subscribed";
 
   return (
     <div
@@ -158,32 +159,24 @@ export function ChannelCard({ channel, onSubscriptionChange }: ChannelCardProps)
             )}
           </div>
 
-          {/* Stats Row */}
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: "0.875rem",
-              margin: "0.35rem 0",
-              fontSize: "0.75rem",
-              color: "var(--text-dim)",
-              flexWrap: "wrap",
-            }}
-          >
-            {channel.subscriberCount && (
+          {/* Stats Row - Subscriber count only */}
+          {channel.subscriberCount && (
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: "0.875rem",
+                margin: "0.35rem 0",
+                fontSize: "0.75rem",
+                color: "var(--text-dim)",
+              }}
+            >
               <span style={{ display: "inline-flex", alignItems: "center", gap: "0.25rem" }}>
                 <Users size={13} style={{ color: "var(--primary)" }} />
                 <span>{channel.subscriberCount}</span>
               </span>
-            )}
-
-            {channel.videoCount && (
-              <span style={{ display: "inline-flex", alignItems: "center", gap: "0.25rem" }}>
-                <Video size={13} style={{ color: "var(--text-dim)" }} />
-                <span>{channel.videoCount}</span>
-              </span>
-            )}
-          </div>
+            </div>
+          )}
 
           {/* Description */}
           {channel.description && (
@@ -221,101 +214,80 @@ export function ChannelCard({ channel, onSubscriptionChange }: ChannelCardProps)
         </div>
       )}
 
-      {/* Actions Row: Subscribe / Subscribed & Visit Channel */}
+      {/* Actions Row */}
       <div
         style={{
           display: "flex",
           alignItems: "center",
-          justifyContent: "space-between",
+          justifyContent: hasSubscriptionAction ? "space-between" : "flex-end",
           borderTop: "1px solid var(--border-color)",
           paddingTop: "0.875rem",
           gap: "0.75rem",
           flexWrap: "wrap",
         }}
       >
-        <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
-          {status === "subscribed" ? (
-            <div style={{ display: "flex", alignItems: "center", gap: "0.35rem" }}>
-              <span
-                style={{
-                  display: "inline-flex",
-                  alignItems: "center",
-                  gap: "0.25rem",
-                  fontSize: "0.75rem",
-                  fontWeight: 600,
-                  color: "var(--accent-emerald, #10b981)",
-                  backgroundColor: "rgba(16, 185, 129, 0.12)",
-                  padding: "0.25rem 0.6rem",
-                  borderRadius: "var(--radius-full)",
-                }}
-              >
-                <Check size={13} />
-                <span>Subscribed</span>
-              </span>
+        {hasSubscriptionAction && (
+          <div>
+            {status === "subscribed" ? (
+              <div style={{ display: "flex", alignItems: "center", gap: "0.35rem" }}>
+                <span
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: "0.25rem",
+                    fontSize: "0.75rem",
+                    fontWeight: 600,
+                    color: "var(--accent-emerald, #10b981)",
+                    backgroundColor: "rgba(16, 185, 129, 0.12)",
+                    padding: "0.25rem 0.6rem",
+                    borderRadius: "var(--radius-full)",
+                  }}
+                >
+                  <Check size={13} />
+                  <span>Subscribed</span>
+                </span>
+                <button
+                  type="button"
+                  onClick={handleToggleSubscribe}
+                  disabled={loading}
+                  className="btn btn-outline btn-sm"
+                  style={{ fontSize: "0.75rem", padding: "0.25rem 0.5rem" }}
+                  title="Unsubscribe on YouTube"
+                >
+                  {loading ? <RefreshCw size={12} className="spin" /> : "Unsubscribe"}
+                </button>
+              </div>
+            ) : (
               <button
                 type="button"
                 onClick={handleToggleSubscribe}
                 disabled={loading}
-                className="btn btn-outline btn-sm"
-                style={{ fontSize: "0.75rem", padding: "0.25rem 0.5rem" }}
-                title="Unsubscribe on YouTube"
+                className="btn btn-primary btn-sm"
+                style={{ fontSize: "0.8125rem", padding: "0.35rem 0.85rem", gap: "0.35rem" }}
               >
-                {loading ? <RefreshCw size={12} className="spin" /> : "Unsubscribe"}
+                {loading ? (
+                  <>
+                    <RefreshCw size={13} className="spin" />
+                    <span>Updating</span>
+                  </>
+                ) : (
+                  <>
+                    <BellRing size={13} />
+                    <span>Subscribe</span>
+                  </>
+                )}
               </button>
-            </div>
-          ) : status === "not_subscribed" ? (
-            <button
-              type="button"
-              onClick={handleToggleSubscribe}
-              disabled={loading}
-              className="btn btn-primary btn-sm"
-              style={{ fontSize: "0.8125rem", padding: "0.35rem 0.85rem", gap: "0.35rem" }}
-            >
-              {loading ? (
-                <>
-                  <RefreshCw size={13} className="spin" />
-                  <span>Updating</span>
-                </>
-              ) : (
-                <>
-                  <BellRing size={13} />
-                  <span>Subscribe</span>
-                </>
-              )}
-            </button>
-          ) : (
-            <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
-              <span
-                style={{
-                  fontSize: "0.75rem",
-                  color: "var(--text-dim)",
-                  backgroundColor: "var(--bg-surface-elevated)",
-                  padding: "0.2rem 0.5rem",
-                  borderRadius: "var(--radius-sm)",
-                  border: "1px solid var(--border-color)",
-                }}
-              >
-                Status Unknown
-              </span>
-              <Link
-                href="/settings/connections"
-                className="btn btn-outline btn-sm"
-                style={{ fontSize: "0.75rem", padding: "0.25rem 0.6rem" }}
-                title="Connect YouTube account to verify subscriptions"
-              >
-                Connect YouTube
-              </Link>
-            </div>
-          )}
-        </div>
+            )}
+          </div>
+        )}
 
-        {/* Visit Channel on YouTube */}
+        {/* External Channel Link */}
         <a
           href={channel.channelUrl}
           target="_blank"
           rel="noopener noreferrer"
           className="btn btn-outline btn-sm"
-          style={{ fontSize: "0.75rem", gap: "0.35rem", padding: "0.35rem 0.65rem" }}
+          style={{ fontSize: "0.75rem", gap: "0.35rem", padding: "0.35rem 0.75rem" }}
           aria-label={`Open ${channel.title} channel on YouTube`}
         >
           <span>Channel</span>
