@@ -2,31 +2,54 @@ import { NextRequest, NextResponse } from "next/server";
 import { getCurrentSession } from "@/lib/auth";
 import { encryptSecret } from "@/lib/crypto";
 import { saveOAuthConnectionAsync } from "@/lib/data-service";
+import { getGoogleOAuthCredentials, getYouTubeOAuthRedirectUri, getAppBaseUrl } from "@/lib/oauth-config";
+import { extractEmailFromIdToken, getGoogleAccountDetails, cacheGoogleAccount } from "@/lib/google-account";
 
 export const dynamic = "force-dynamic";
 
 export async function GET(request: NextRequest) {
   const requestUrl = new URL(request.url);
+  const appBaseUrl = getAppBaseUrl(request);
   const code = requestUrl.searchParams.get("code");
   const error = requestUrl.searchParams.get("error");
+  const state = requestUrl.searchParams.get("state");
+  const storedState = request.cookies.get("youtube_oauth_state")?.value;
+
+  // Helper to construct response with CSRF state cookie cleared
+  const createRedirectWithClearedState = (url: URL) => {
+    const res = NextResponse.redirect(url);
+    res.cookies.delete("youtube_oauth_state");
+    return res;
+  };
 
   if (error || !code) {
     const errorMsg = error || "Authorization was cancelled.";
-    return NextResponse.redirect(new URL(`/settings?error=${encodeURIComponent(errorMsg)}`, requestUrl.origin));
+    return createRedirectWithClearedState(
+      new URL(`/settings?error=${encodeURIComponent(errorMsg)}`, appBaseUrl)
+    );
+  }
+
+  // Validate CSRF state parameter if stored state is present
+  if (storedState && state && storedState !== state) {
+    console.warn("YouTube OAuth state mismatch. Possible CSRF attack detected.");
+    return createRedirectWithClearedState(
+      new URL("/settings?error=State+mismatch.+OAuth+session+could+not+be+verified.", appBaseUrl)
+    );
   }
 
   const session = await getCurrentSession();
   if (!session?.user) {
-    return NextResponse.redirect(new URL("/auth/signin?redirect=/settings", requestUrl.origin));
+    return createRedirectWithClearedState(
+      new URL("/auth/signin?redirect=/settings", appBaseUrl)
+    );
   }
 
-  const clientId = process.env.GOOGLE_CLIENT_ID || process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID;
-  const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
-  const redirectUri = `${requestUrl.origin}/api/auth/youtube/callback`;
+  const { clientId, clientSecret } = getGoogleOAuthCredentials();
+  const redirectUri = getYouTubeOAuthRedirectUri(request);
 
   if (!clientId || !clientSecret) {
-    return NextResponse.redirect(
-      new URL("/settings?error=Google+OAuth+credentials+missing+on+server.", requestUrl.origin)
+    return createRedirectWithClearedState(
+      new URL("/settings?error=Google+OAuth+credentials+missing+on+server.", appBaseUrl)
     );
   }
 
@@ -46,7 +69,9 @@ export async function GET(request: NextRequest) {
     if (!tokenRes.ok) {
       const errData = await tokenRes.json().catch(() => ({}));
       console.error("Google token exchange error:", errData);
-      return NextResponse.redirect(new URL("/settings?error=Failed+to+exchange+Google+code.", requestUrl.origin));
+      return createRedirectWithClearedState(
+        new URL("/settings?error=Failed+to+exchange+Google+code.", appBaseUrl)
+      );
     }
 
     const tokenData = await tokenRes.json();
@@ -86,6 +111,32 @@ export async function GET(request: NextRequest) {
       // Graceful fallback
     }
 
+    // Cache Google Account email extracted from id_token or fetched from userinfo
+    let googleEmail: string | null = null;
+    let googleEmailVerified = false;
+
+    if (tokenData.id_token) {
+      const parsed = extractEmailFromIdToken(tokenData.id_token);
+      if (parsed?.email) {
+        googleEmail = parsed.email;
+        googleEmailVerified = parsed.emailVerified;
+      }
+    }
+
+    if (!googleEmail && accessToken) {
+      try {
+        const details = await getGoogleAccountDetails(session.user.id, accessToken);
+        if (details?.email) {
+          googleEmail = details.email;
+          googleEmailVerified = details.emailVerified;
+        }
+      } catch {
+        // Non-fatal
+      }
+    } else if (googleEmail) {
+      cacheGoogleAccount(session.user.id, googleEmail, googleEmailVerified);
+    }
+
     const now = Date.now();
     const expiresAt = now + expiresIn * 1000;
 
@@ -103,9 +154,13 @@ export async function GET(request: NextRequest) {
       channelTitle,
     });
 
-    return NextResponse.redirect(new URL("/settings?connected=youtube", requestUrl.origin));
+    return createRedirectWithClearedState(
+      new URL("/settings?connected=youtube", appBaseUrl)
+    );
   } catch (err) {
     console.error("YouTube OAuth callback error:", err);
-    return NextResponse.redirect(new URL("/settings?error=Unexpected+OAuth+error.", requestUrl.origin));
+    return createRedirectWithClearedState(
+      new URL("/settings?error=Unexpected+OAuth+error.", appBaseUrl)
+    );
   }
 }

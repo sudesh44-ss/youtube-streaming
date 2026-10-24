@@ -3,22 +3,24 @@ import { getCurrentSession } from "@/lib/auth";
 import crypto from "node:crypto";
 import { encryptSecret } from "@/lib/crypto";
 import { saveOAuthConnectionAsync } from "@/lib/data-service";
+import { getGoogleOAuthCredentials, getYouTubeOAuthRedirectUri, getAppBaseUrl } from "@/lib/oauth-config";
 
 export const dynamic = "force-dynamic";
 
 export async function GET(request: NextRequest) {
   const session = await getCurrentSession();
   const requestUrl = new URL(request.url);
+  const appBaseUrl = getAppBaseUrl(request);
 
   if (!session?.user) {
-    const signinUrl = new URL("/auth/signin", requestUrl.origin);
+    const signinUrl = new URL("/auth/signin", appBaseUrl);
     signinUrl.searchParams.set("redirect", "/settings");
     return NextResponse.redirect(signinUrl);
   }
 
-  const clientId = process.env.GOOGLE_CLIENT_ID || process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID;
-  const redirectUri = `${requestUrl.origin}/api/auth/youtube/callback`;
-  const state = crypto.randomBytes(16).toString("hex");
+  const { clientId } = getGoogleOAuthCredentials();
+  const redirectUri = getYouTubeOAuthRedirectUri(request);
+  const state = crypto.randomBytes(24).toString("hex");
 
   // If live Google credentials are not set in environment
   if (!clientId) {
@@ -40,13 +42,16 @@ export async function GET(request: NextRequest) {
           channelTitle: "Dev YouTube User",
         });
 
-        return NextResponse.redirect(new URL("/settings?connected=youtube", requestUrl.origin));
+        return NextResponse.redirect(new URL("/settings?connected=youtube", appBaseUrl));
       }
     }
 
     // Direct user with clear instructions
-    const settingsUrl = new URL("/settings", requestUrl.origin);
-    settingsUrl.searchParams.set("error", "Google OAuth credentials (GOOGLE_CLIENT_ID) not yet configured in .env.local.");
+    const settingsUrl = new URL("/settings", appBaseUrl);
+    settingsUrl.searchParams.set(
+      "error",
+      "Google OAuth credentials (GOOGLE_CLIENT_ID) not yet configured. Please configure them in environment variables."
+    );
     return NextResponse.redirect(settingsUrl);
   }
 
@@ -62,5 +67,15 @@ export async function GET(request: NextRequest) {
   googleAuthUrl.searchParams.set("prompt", "consent");
   googleAuthUrl.searchParams.set("state", state);
 
-  return NextResponse.redirect(googleAuthUrl.toString());
+  // Set CSRF state cookie
+  const response = NextResponse.redirect(googleAuthUrl.toString());
+  response.cookies.set("youtube_oauth_state", state, {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
+    sameSite: "lax",
+    path: "/",
+    maxAge: 600, // 10 minutes
+  });
+
+  return response;
 }

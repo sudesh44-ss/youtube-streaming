@@ -479,4 +479,37 @@ assert(insightsSource.includes("monthlyWatchTime"), "Calculates monthly watch ti
 assert(insightsSource.includes("interests"), "Calculates category affinities");
 console.log("[PASS] Recommendation explainability, reset route, and Your Insights pipeline verified.");
 
+// 16. Google OAuth Redirect URI Resolution, State Validation & Host Security
+console.log("\n16. Testing Google OAuth Redirect URI Resolution & State Security...");
+import {
+  CANONICAL_PRODUCTION_REDIRECT_URI,
+  CANONICAL_LOCAL_REDIRECT_URI,
+  getYouTubeOAuthRedirectUri,
+  getGoogleCloudConsoleRequirements,
+} from "../src/lib/oauth-config";
+
+assert.strictEqual(
+  CANONICAL_PRODUCTION_REDIRECT_URI,
+  "https://youtube-streaming-ten.vercel.app/api/auth/youtube/callback",
+  "Canonical production redirect URI matches exact specification"
+);
+assert.strictEqual(
+  CANONICAL_LOCAL_REDIRECT_URI,
+  "http://localhost:3000/api/auth/youtube/callback",
+  "Canonical local redirect URI matches standard development port"
+);
+
+const connectSource = fs.readFileSync(path.join(process.cwd(), "src/app/api/auth/youtube/connect/route.ts"), "utf-8");
+const callbackSource = fs.readFileSync(path.join(process.cwd(), "src/app/api/auth/youtube/callback/route.ts"), "utf-8");
+
+assert(connectSource.includes("getYouTubeOAuthRedirectUri"), "connect route uses getYouTubeOAuthRedirectUri");
+assert(callbackSource.includes("getYouTubeOAuthRedirectUri"), "callback route uses getYouTubeOAuthRedirectUri");
+assert(connectSource.includes("youtube_oauth_state"), "connect route sets youtube_oauth_state cookie");
+assert(callbackSource.includes("youtube_oauth_state"), "callback route checks and clears youtube_oauth_state cookie");
+
+const consoleReqs = getGoogleCloudConsoleRequirements();
+assert.strictEqual(consoleReqs.production.origin, "https://youtube-streaming-ten.vercel.app");
+assert.strictEqual(consoleReqs.production.redirectUri, "https://youtube-streaming-ten.vercel.app/api/auth/youtube/callback");
+console.log("[PASS] Google OAuth redirect URI resolution, state validation, and console requirements verified.");
+
 console.log("\n=== ALL NEW FEATURE TESTS PASSED ===");

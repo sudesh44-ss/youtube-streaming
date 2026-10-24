@@ -85,8 +85,10 @@ export default function SettingsPage() {
     connected: boolean;
     channelTitle?: string;
     connectedAt?: number;
+    email?: string | null;
+    emailLoading?: boolean;
     loading: boolean;
-  }>({ connected: false, loading: true });
+  }>({ connected: false, loading: true, emailLoading: true });
 
   // Form states
   const [displayName, setDisplayName] = useState("");
@@ -141,7 +143,9 @@ export default function SettingsPage() {
           connected: Boolean(ytData.connected),
           channelTitle: ytData.channelTitle,
           connectedAt: ytData.connectedAt,
+          email: ytData.email ?? null,
           loading: false,
+          emailLoading: false,
         });
       }
     } catch (err) {
@@ -176,7 +180,7 @@ export default function SettingsPage() {
     try {
       const res = await fetch("/api/auth/youtube/disconnect", { method: "POST" });
       if (!res.ok) throw new Error("Failed to disconnect YouTube account.");
-      setYtOAuthStatus({ connected: false, loading: false });
+      setYtOAuthStatus({ connected: false, loading: false, email: null, emailLoading: false });
       showFeedback("success", "YouTube account disconnected successfully.");
     } catch (err: any) {
       showFeedback("error", err.message || "Failed to disconnect.");
@@ -521,6 +525,22 @@ export default function SettingsPage() {
                           <span style={{ fontSize: "0.8125rem", color: "var(--text-muted)" }}>Connected YouTube Channel</span>
                           <span style={{ fontSize: "0.875rem", fontWeight: 600, color: "var(--text-main)" }}>
                             {ytOAuthStatus.channelTitle || "Authorized YouTube Channel"}
+                          </span>
+                        </div>
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "1rem" }}>
+                          <span style={{ fontSize: "0.8125rem", color: "var(--text-muted)", flexShrink: 0 }}>Google Account</span>
+                          <span style={{ fontSize: "0.875rem", fontWeight: 500, color: "var(--text-main)", textAlign: "right", wordBreak: "break-all" }}>
+                            {ytOAuthStatus.loading || ytOAuthStatus.emailLoading ? (
+                              <span style={{ color: "var(--text-muted)", fontStyle: "italic", fontSize: "0.8125rem" }}>
+                                Loading account details…
+                              </span>
+                            ) : ytOAuthStatus.email ? (
+                              ytOAuthStatus.email
+                            ) : (
+                              <span style={{ color: "var(--text-dim)", fontSize: "0.8125rem" }}>
+                                Email unavailable
+                              </span>
+                            )}
                           </span>
                         </div>
                         {ytOAuthStatus.connectedAt && (

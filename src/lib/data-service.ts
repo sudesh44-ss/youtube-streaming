@@ -4,6 +4,7 @@ import { createAdminClient } from "./supabase/admin";
 import { getDb } from "./db";
 import { encryptSecret, decryptSecret, maskApiKey } from "./crypto";
 import { ProviderStatus } from "./types";
+import { getGoogleOAuthCredentials } from "./oauth-config";
 
 /**
  * Validates whether an identifier is a canonical UUID format.
@@ -1118,8 +1119,7 @@ async function refreshGoogleAccessToken(
 ): Promise<string | null> {
   try {
     const refreshToken = decryptSecret(encryptedRefreshToken, refreshIv, refreshAuthTag);
-    const clientId = process.env.GOOGLE_CLIENT_ID || process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID;
-    const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
+    const { clientId, clientSecret } = getGoogleOAuthCredentials();
 
     if (!clientId || !clientSecret || !refreshToken) {
       return null;
@@ -1321,7 +1321,7 @@ export async function saveOAuthConnectionAsync(params: SaveOAuthConnectionParams
   const supabase = await getSupabase();
   if (supabase && isUuid(userId)) {
     try {
-      await supabase.from("oauth_connections").upsert(
+      const { error: sbError } = await supabase.from("oauth_connections").upsert(
         {
           user_id: userId,
           provider,
@@ -1339,6 +1339,9 @@ export async function saveOAuthConnectionAsync(params: SaveOAuthConnectionParams
         },
         { onConflict: "user_id,provider" }
       );
+      if (sbError) {
+        console.warn("Supabase saveOAuthConnectionAsync warning:", sbError.message, sbError.code);
+      }
     } catch (err) {
       console.warn("Supabase saveOAuthConnectionAsync warning:", err);
     }
