@@ -12,6 +12,7 @@
 
 import { NormalizedContentItem, YouTubeChannelItem } from "./types";
 import { STORAGE_CHANGE_EVENT } from "./local-storage";
+import { isConsentGranted } from "./cookie-consent";
 
 export interface CachedSearchData {
   items: NormalizedContentItem[];
@@ -181,16 +182,18 @@ export async function setLocalSearchCache(
   // 1. Write to memory cache
   memoryCache.set(key, record);
 
-  // 2. Write to IndexedDB
-  try {
-    const db = await getIndexedDB();
-    if (!db) return;
+  // 2. Write to IndexedDB if functional consent is granted
+  if (isConsentGranted("functional")) {
+    try {
+      const db = await getIndexedDB();
+      if (!db) return;
 
-    const tx = db.transaction(STORE_NAME, "readwrite");
-    const store = tx.objectStore(STORE_NAME);
-    store.put(record);
-  } catch (err) {
-    console.warn("Error writing search cache to IndexedDB:", err);
+      const tx = db.transaction(STORE_NAME, "readwrite");
+      const store = tx.objectStore(STORE_NAME);
+      store.put(record);
+    } catch (err) {
+      console.warn("Error writing search cache to IndexedDB:", err);
+    }
   }
 }
 

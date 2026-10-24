@@ -1652,6 +1652,24 @@ export async function saveUserRecommendationProfileAsync(
   }
 }
 
+export async function clearContentFeedbackAsync(userId: string): Promise<void> {
+  const supabase = await getSupabase();
+  if (supabase && isUuid(userId)) {
+    try {
+      await supabase.from("content_feedback").delete().eq("user_id", userId);
+    } catch (err) {
+      console.warn("Supabase clearContentFeedbackAsync warning:", err);
+    }
+  }
+
+  try {
+    const db = getDb();
+    db.prepare("DELETE FROM content_feedback WHERE user_id = ?").run(userId);
+  } catch {
+    // Non-fatal
+  }
+}
+
 export async function resetUserRecommendationProfileAsync(userId: string): Promise<void> {
   const supabase = await getSupabase();
   if (supabase && isUuid(userId)) {

@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { ShieldCheck, FileText, HelpCircle, Code } from "lucide-react";
+import { ShieldCheck, FileText, HelpCircle, Code, Cookie } from "lucide-react";
+import { reopenCookieConsentModal } from "@/lib/cookie-consent";
 
 export function Footer() {
   return (
@@ -48,6 +49,16 @@ export function Footer() {
                     <Link href="/terms" className="footer-link-icon">
                       <FileText size={15} /> <span>Terms & Conditions</span>
                     </Link>
+                  </li>
+                  <li>
+                    <button
+                      type="button"
+                      onClick={reopenCookieConsentModal}
+                      className="footer-link-icon"
+                      style={{ background: "none", border: "none", padding: 0, font: "inherit", cursor: "pointer", textAlign: "left", width: "100%", color: "inherit" }}
+                    >
+                      <Cookie size={15} /> <span>Cookie Preferences</span>
+                    </button>
                   </li>
                 </ul>
               </div>

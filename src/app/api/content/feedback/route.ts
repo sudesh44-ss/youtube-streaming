@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getCurrentSession } from "@/lib/auth";
-import { recordContentFeedbackAsync } from "@/lib/data-service";
+import { recordContentFeedbackAsync, clearContentFeedbackAsync, resetUserRecommendationProfileAsync } from "@/lib/data-service";
 import { appCache } from "@/lib/cache-service";
 
 export const dynamic = "force-dynamic";
@@ -47,5 +47,32 @@ export async function POST(req: NextRequest) {
   } catch (err: any) {
     console.error("Content feedback error:", err);
     return NextResponse.json({ error: err?.message || "Failed to record feedback." }, { status: 500 });
+  }
+}
+
+export async function DELETE() {
+  try {
+    const session = await getCurrentSession();
+    if (!session?.user) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    await clearContentFeedbackAsync(session.user.id);
+    await resetUserRecommendationProfileAsync(session.user.id);
+
+    // Evict cached feed/recommendations for this user
+    for (const key of appCache.keys()) {
+      if (key.includes(session.user.id)) {
+        appCache.delete(key);
+      }
+    }
+
+    return NextResponse.json({
+      success: true,
+      message: "Personalized feedback and recommendation affinities have been reset successfully.",
+    });
+  } catch (err: any) {
+    console.error("Content feedback DELETE error:", err);
+    return NextResponse.json({ error: err?.message || "Failed to reset feedback." }, { status: 500 });
   }
 }

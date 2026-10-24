@@ -118,3 +118,22 @@ export function cacheGoogleAccount(
 export function invalidateGoogleAccountCache(userId: string): void {
   accountCache.delete(userId);
 }
+
+/**
+ * Attempts external token revocation at Google's OAuth2 revocation endpoint.
+ * Returns true if Google successfully revoked the token or confirmed revocation.
+ */
+export async function revokeGoogleOAuthToken(token?: string | null): Promise<boolean> {
+  if (!token) return false;
+  try {
+    const res = await fetch("https://oauth2.googleapis.com/revoke", {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: `token=${encodeURIComponent(token)}`,
+    });
+    return res.ok;
+  } catch (err: any) {
+    console.warn("[GoogleAccount] External token revocation error:", err?.message || err);
+    return false;
+  }
+}

@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { FileText, ArrowLeft } from "lucide-react";
+import { FileText, ArrowLeft, Shield, Video, AlertTriangle } from "lucide-react";
 
 export const metadata = {
   title: "Terms & Conditions — OmniDiscover",
@@ -25,10 +25,10 @@ export default function TermsPage() {
         </Link>
         <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", marginBottom: "0.5rem" }}>
           <FileText size={24} style={{ color: "var(--primary)" }} />
-          <h1 style={{ fontSize: "2.25rem", fontWeight: 800 }}>Terms & Conditions</h1>
+          <h1 style={{ fontSize: "2.25rem", fontWeight: 800 }}>Terms &amp; Conditions</h1>
         </div>
         <p style={{ color: "var(--text-dim)", fontSize: "0.875rem" }}>
-          Document Version: 2026.1 • Effective Date: October 21, 2026 • Last Reviewed: October 2026
+          Document Version: 2026.2 • Effective Date: October 2026 • Last Reviewed: October 25, 2026
         </p>
       </div>
 
@@ -43,84 +43,201 @@ export default function TermsPage() {
           fontSize: "0.9375rem",
         }}
       >
+        {/* Section 1 */}
         <section>
           <h2 style={{ fontSize: "1.25rem", fontWeight: 700, color: "var(--text-main)", marginBottom: "0.75rem" }}>
-            1. Acceptance of Terms
+            1. Acceptance of Terms &amp; Eligibility
           </h2>
           <p>
-            By accessing, creating an account on, or using OmniDiscover (&quot;the Service&quot;), you acknowledge that you have read, understood, and agree to be bound by these Terms &amp; Conditions (Version 2026.1). If you do not agree to these terms, you must not access or use the Service.
+            By accessing, creating an account on, or using OmniDiscover (&quot;the Service&quot;, &quot;we&quot;, &quot;our&quot;),
+            you acknowledge that you have read, understood, and agree to be bound by these Terms &amp; Conditions (Version 2026.2)
+            and our accompanying <Link href="/privacy" style={{ color: "var(--primary)" }}>Privacy Policy</Link>. If you do not
+            agree with these Terms, you must immediately discontinue use of the Service. You represent that you are at least 13
+            years old (or 16 where required by applicable local law) and possess legal capacity to enter into these Terms.
           </p>
         </section>
 
+        {/* Section 2 */}
         <section>
           <h2 style={{ fontSize: "1.25rem", fontWeight: 700, color: "var(--text-main)", marginBottom: "0.75rem" }}>
-            2. Account Registration and Security
+            2. Account Registration and Responsibility
           </h2>
           <p>
-            When registering an account, you agree to provide truthful, accurate, and complete information. You are solely responsible for maintaining the confidentiality of your authentication credentials and for all activities that occur under your account. You must notify us immediately of any unauthorized use or security breach.
+            When registering, you agree to provide truthful, accurate, and current information. You are solely responsible for
+            safeguarding the confidentiality of your authentication credentials and for all actions performed through your account.
+            You must notify the OmniDiscover team immediately via the <Link href="/help" style={{ color: "var(--primary)" }}>Help Center</Link> of
+            any unauthorized access or security breach. OmniDiscover is not liable for losses resulting from compromised passwords.
           </p>
         </section>
 
-        <section>
-          <h2 style={{ fontSize: "1.25rem", fontWeight: 700, color: "var(--text-main)", marginBottom: "0.75rem" }}>
-            3. Third-Party Content & Intellectual Property Disclaimers
-          </h2>
+        {/* Section 3: Dedicated Google/YouTube Section */}
+        <section style={{ border: "1px solid var(--border-color)", borderRadius: "var(--radius-md)", padding: "1.25rem", backgroundColor: "var(--bg-surface-elevated)" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", marginBottom: "0.75rem" }}>
+            <Video size={20} style={{ color: "#ef4444" }} />
+            <h2 style={{ fontSize: "1.25rem", fontWeight: 700, color: "var(--text-main)", margin: 0 }}>
+              3. Google OAuth &amp; YouTube Account Integration
+            </h2>
+          </div>
           <p style={{ marginBottom: "0.75rem" }}>
-            OmniDiscover is an indexing, aggregation, and content discovery platform. We do not host, store, or own third-party media files, including:
+            OmniDiscover offers optional integration with YouTube via Google OAuth 2.0. By connecting your Google account, you
+            expressly agree to the following conditions:
           </p>
           <ul style={{ paddingLeft: "1.5rem", display: "flex", flexDirection: "column", gap: "0.5rem" }}>
-            <li><strong>No Ownership of Third-Party Media:</strong> All video titles, descriptions, movie posters, artwork, track metadata, and channel materials remain the exclusive intellectual property of their respective creators, copyright holders, and licensed distribution networks.</li>
-            <li><strong>YouTube Integration:</strong> Video playback is executed solely through the official YouTube IFrame Player API in compliance with YouTube terms.</li>
-            <li><strong>TMDB Attribution:</strong> This product uses the TMDB API but is not endorsed or certified by TMDB. Catalog data does not constitute streaming or distribution rights for full-length theatrical films.</li>
+            <li>
+              <strong>Non-Affiliation Disclaimer:</strong> OmniDiscover is an independent software application and is{" "}
+              <strong>not affiliated with, endorsed by, sponsored by, or partner-certified by Google LLC or YouTube</strong>.
+              All YouTube trademarks, logos, and brand elements belong exclusively to Google LLC.
+            </li>
+            <li>
+              <strong>Third-Party Agreement Compliance:</strong> By utilizing YouTube integration or viewing YouTube content,
+              you agree to be bound by the{" "}
+              <a href="https://www.youtube.com/t/terms" target="_blank" rel="noopener noreferrer" style={{ color: "var(--primary)", textDecoration: "underline" }}>
+                YouTube Terms of Service
+              </a>{" "}
+              and the{" "}
+              <a href="https://policies.google.com/privacy" target="_blank" rel="noopener noreferrer" style={{ color: "var(--primary)", textDecoration: "underline" }}>
+                Google Privacy Policy
+              </a>.
+            </li>
+            <li>
+              <strong>Authorized Actions on Your Behalf:</strong> When you connect your YouTube account, you authorize OmniDiscover
+              to execute user-directed YouTube API requests on your behalf, strictly limited to: (a) subscribing and unsubscribing
+              to creators you choose, (b) recording video ratings/likes you initiate, and (c) displaying your authorized channel identity.
+            </li>
+            <li>
+              <strong>Revocation Rights:</strong> You may disconnect your YouTube account at any time in{" "}
+              <strong>Settings &rarr; YouTube Account &rarr; Disconnect Account</strong>, which purges stored credentials and triggers
+              Google token revocation. You also retain the absolute right to revoke access directly via{" "}
+              <a href="https://myaccount.google.com/permissions" target="_blank" rel="noopener noreferrer" style={{ color: "var(--primary)", textDecoration: "underline" }}>
+                Google Security Settings
+              </a>.
+            </li>
+            <li>
+              <strong>API Availability &amp; Quotas:</strong> YouTube actions depend upon Google API availability, network connectivity,
+              and API quota allocations. Google may modify, suspend, or restrict API access, endpoints, or permissions at any time
+              without notice. OmniDiscover is not liable for external service interruptions, API quota exhaustion, or account actions
+              enforced by Google.
+            </li>
           </ul>
         </section>
 
+        {/* Section 4 */}
         <section>
           <h2 style={{ fontSize: "1.25rem", fontWeight: 700, color: "var(--text-main)", marginBottom: "0.75rem" }}>
-            4. API Keys and User-Provided Credentials
+            4. User-Provided API Keys &amp; Bring-Your-Own-Key (BYOK)
           </h2>
           <p>
-            Users may optionally supply personal API credentials (such as Google Cloud YouTube API keys or TMDB developer keys) to execute live queries. You represent that you are authorized to use the keys you provide and that your use will adhere to the respective provider’s terms and rate limitations. We do not assume responsibility for external quota exhaustion or third-party provider account suspensions.
+            Users may supply personal developer API credentials (such as a YouTube Data API v3 key or TMDB key) in Settings.
+            You represent that you are legally authorized to generate and use the keys you provide, and that your usage complies
+            with the respective provider&apos;s developer terms and rate limits. All user-supplied API keys are stored encrypted
+            at rest using server-side AES-256-GCM authenticated encryption. We do not assume liability for quota exhaustion or
+            third-party developer account restrictions.
           </p>
         </section>
 
+        {/* Section 5 */}
         <section>
           <h2 style={{ fontSize: "1.25rem", fontWeight: 700, color: "var(--text-main)", marginBottom: "0.75rem" }}>
-            5. Prohibited Activities
+            5. Intellectual Property &amp; Content Aggregation
+          </h2>
+          <p style={{ marginBottom: "0.75rem" }}>
+            OmniDiscover functions as a content aggregation, indexing, and recommendation engine. We do not host, store, or own
+            third-party media files:
+          </p>
+          <ul style={{ paddingLeft: "1.5rem", display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+            <li>
+              <strong>Ownership of Media:</strong> Video titles, descriptions, channel artwork, thumbnails, and audio-visual streams
+              remain the intellectual property of their original creators, rights holders, or distribution platforms.
+            </li>
+            <li>
+              <strong>Embedded Playback:</strong> All video playback occurs strictly through official, compliant embed players
+              (such as the YouTube IFrame Player API). OmniDiscover does not bypass playback controls, strip ads, or alter
+              content streams.
+            </li>
+            <li>
+              <strong>Metadata Attribution:</strong> Cinematic metadata is queried from The Movie Database (TMDB) under fair use
+              and developer attribution terms.
+            </li>
+          </ul>
+        </section>
+
+        {/* Section 6 */}
+        <section>
+          <h2 style={{ fontSize: "1.25rem", fontWeight: 700, color: "var(--text-main)", marginBottom: "0.75rem" }}>
+            6. User Content &amp; Recommendation Feedback
+          </h2>
+          <p>
+            You retain full ownership of any search queries, watchlist selections, and feedback (&quot;not interested&quot;, &quot;like&quot;,
+            &quot;dislike&quot;) you submit. You grant OmniDiscover only the limited, non-exclusive license necessary to process your
+            inputs to generate your personalized discovery feed. We do not claim proprietary rights over your data, nor do we sell
+            user preferences to advertisers.
+          </p>
+        </section>
+
+        {/* Section 7 */}
+        <section>
+          <h2 style={{ fontSize: "1.25rem", fontWeight: 700, color: "var(--text-main)", marginBottom: "0.75rem" }}>
+            7. Acceptable Use and Prohibited Activities
           </h2>
           <p style={{ marginBottom: "0.5rem" }}>You agree not to engage in any of the following prohibited behaviors:</p>
           <ul style={{ paddingLeft: "1.5rem", display: "flex", flexDirection: "column", gap: "0.5rem" }}>
-            <li>Attempting to bypass Digital Rights Management (DRM) or extract, rip, or download original audio/video files.</li>
-            <li>Reverse engineering or tampering with server-side credential encryption mechanisms.</li>
-            <li>Using automated crawlers, scrapers, or botnets to abuse platform endpoints or third-party quotas.</li>
-            <li>Submitting false credentials or attempting unauthorized cross-tenant data access.</li>
+            <li>Attempting to bypass Digital Rights Management (DRM) or extract, rip, scrape, or download original media streams.</li>
+            <li>Reverse engineering, decompiling, or probing the server-side credential encryption architecture (AES-256-GCM).</li>
+            <li>Deploying automated bots, scrapers, or crawlers that abuse platform APIs or exceed distributed rate limits.</li>
+            <li>Submitting false credentials, attempting cross-account unauthorized access, or interfering with service integrity.</li>
+            <li>Using the Service for any unlawful purpose or in violation of applicable content distributor terms.</li>
           </ul>
         </section>
 
+        {/* Section 8 */}
         <section>
           <h2 style={{ fontSize: "1.25rem", fontWeight: 700, color: "var(--text-main)", marginBottom: "0.75rem" }}>
-            6. Service Availability & Modifications
+            8. Service Availability &amp; Modifications
           </h2>
           <p>
-            We strive for continuous availability but do not guarantee uninterrupted uptime. Third-party provider APIs may experience maintenance, rate-limit constraints, or changes outside our control. We reserve the right to modify, suspend, or discontinue any feature with reasonable notice where feasible.
+            We strive for reliable service operation but cannot guarantee continuous, uninterrupted uptime. The Service is provided on
+            an &quot;AS IS&quot; and &quot;AS AVAILABLE&quot; basis. Third-party provider APIs, serverless infrastructure, or upstream
+            network providers may undergo maintenance or rate-limiting outside our control. We reserve the right to modify, enhance,
+            or suspend features with reasonable advance notice where feasible.
           </p>
         </section>
 
+        {/* Section 9 */}
         <section>
           <h2 style={{ fontSize: "1.25rem", fontWeight: 700, color: "var(--text-main)", marginBottom: "0.75rem" }}>
-            7. Limitation of Liability
+            9. Account Termination &amp; Deletion
           </h2>
           <p>
-            To the maximum extent permitted by applicable law, OmniDiscover and its developers shall not be liable for indirect, incidental, special, consequential, or punitive damages resulting from your use of or inability to access third-party content.
+            You may terminate your account at any time in <strong>Settings &rarr; Privacy &amp; Security &rarr; Delete Account</strong>.
+            Account deletion permanently wipes your profile, preferences, watchlists, encrypted OAuth tokens, and activity history.
+            We reserve the right to suspend or terminate accounts that violate these Terms, engage in credential tampering, or abuse
+            platform infrastructure.
           </p>
         </section>
 
+        {/* Section 10 */}
         <section>
           <h2 style={{ fontSize: "1.25rem", fontWeight: 700, color: "var(--text-main)", marginBottom: "0.75rem" }}>
-            8. Governing Law & Contact
+            10. Disclaimer of Warranties &amp; Limitation of Liability
           </h2>
           <p>
-            These Terms are governed by and construed in accordance with applicable laws. If you have questions concerning these Terms, please consult our <Link href="/help" style={{ color: "var(--primary)" }}>Help Center</Link>.
+            To the maximum extent permitted by applicable law, OmniDiscover and its developers disclaim all warranties, express or
+            implied, including warranties of merchantability, fitness for a particular purpose, and non-infringement. In no event
+            shall OmniDiscover, its developers, or contributors be liable for indirect, incidental, consequential, special, or punitive
+            damages, including loss of data, quota exhaustion, or service interruptions resulting from third-party API changes.
+          </p>
+        </section>
+
+        {/* Section 11 */}
+        <section>
+          <h2 style={{ fontSize: "1.25rem", fontWeight: 700, color: "var(--text-main)", marginBottom: "0.75rem" }}>
+            11. Changes to Terms &amp; Contact
+          </h2>
+          <p>
+            We may update these Terms periodically to reflect evolving legal, security, and feature requirements. Updated versions
+            will be posted here with an updated Effective Date. Continued use of the Service following revisions constitutes acceptance
+            of the updated Terms. If you have questions concerning these Terms, please consult our{" "}
+            <Link href="/help" style={{ color: "var(--primary)" }}>Help Center</Link>.
           </p>
         </section>
       </div>

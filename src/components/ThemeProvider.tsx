@@ -1,6 +1,7 @@
 "use client";
 
 import React, { createContext, useContext, useEffect, useState } from "react";
+import { isConsentGranted } from "@/lib/cookie-consent";
 
 type Theme = "dark" | "light";
 
@@ -35,7 +36,9 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
   const setTheme = (next: Theme) => {
     setThemeState(next);
     try {
-      localStorage.setItem("platform_theme", next);
+      if (isConsentGranted("functional")) {
+        localStorage.setItem("platform_theme", next);
+      }
       if (next === "light") {
         document.documentElement.setAttribute("data-theme", "light");
       } else {

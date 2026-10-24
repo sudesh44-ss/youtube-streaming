@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { getCurrentSession, clearSessionCookie, verifyPassword, logSecurityEvent } from "@/lib/auth";
 import { getDb } from "@/lib/db";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { getOAuthConnectionAsync } from "@/lib/data-service";
+import { revokeGoogleOAuthToken, invalidateGoogleAccountCache } from "@/lib/google-account";
 
 export const dynamic = "force-dynamic";
 
@@ -19,6 +21,17 @@ export async function POST(req: NextRequest) {
     const body = await req.json().catch(() => ({}));
     const { password, confirmPhrase } = body;
 
+    // Attempt external Google OAuth token revocation if connected
+    try {
+      const conn = await getOAuthConnectionAsync(session.user.id, "youtube");
+      if (conn?.accessToken) {
+        await revokeGoogleOAuthToken(conn.accessToken);
+      }
+    } catch {
+      // Non-fatal external revocation
+    }
+    invalidateGoogleAccountCache(session.user.id);
+
     // Check if user has a local password configured
     try {
       const db = getDb();
@@ -30,7 +43,10 @@ export async function POST(req: NextRequest) {
         if (!verifyPassword(password, localUser.password_hash, localUser.salt)) {
           return NextResponse.json({ error: "Incorrect password. Account deletion aborted." }, { status: 403 });
         }
-        // Remove from local database
+        // Remove from local database cascade
+        db.prepare("DELETE FROM oauth_connections WHERE user_id = ?").run(session.user.id);
+        db.prepare("DELETE FROM content_feedback WHERE user_id = ?").run(session.user.id);
+        db.prepare("DELETE FROM user_recommendation_profiles WHERE user_id = ?").run(session.user.id);
         db.prepare("DELETE FROM users WHERE id = ?").run(session.user.id);
       }
     } catch {
@@ -46,6 +62,9 @@ export async function POST(req: NextRequest) {
           admin.from("watch_history").delete().eq("user_id", session.user.id),
           admin.from("saved_content").delete().eq("user_id", session.user.id),
           admin.from("provider_credentials").delete().eq("user_id", session.user.id),
+          admin.from("oauth_connections").delete().eq("user_id", session.user.id),
+          admin.from("content_feedback").delete().eq("user_id", session.user.id),
+          admin.from("user_recommendation_profiles").delete().eq("user_id", session.user.id),
           admin.from("user_preferences").delete().eq("user_id", session.user.id),
           admin.from("profiles").delete().eq("id", session.user.id),
         ]);

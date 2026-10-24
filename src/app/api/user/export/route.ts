@@ -3,6 +3,7 @@ import { getCurrentSession } from "@/lib/auth";
 import { getDb } from "@/lib/db";
 import { isSupabaseServerConfigured, createServerSupabaseClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { getOAuthConnectionAsync, getUserRecommendationProfileAsync } from "@/lib/data-service";
 
 export const dynamic = "force-dynamic";
 
@@ -71,6 +72,38 @@ export async function GET() {
       }
     }
 
+    let connectedOAuthAccount: any = null;
+    let recommendationProfile: any = null;
+
+    try {
+      const conn = await getOAuthConnectionAsync(userId, "youtube");
+      if (conn) {
+        connectedOAuthAccount = {
+          provider: "youtube",
+          channelTitle: conn.channelTitle || "Connected YouTube Channel",
+          connectedAt: conn.connectedAt ? new Date(conn.connectedAt).toISOString() : null,
+          hasActiveToken: Boolean(conn.accessToken),
+        };
+      }
+    } catch {
+      // Non-fatal
+    }
+
+    try {
+      const rec = await getUserRecommendationProfileAsync(userId);
+      if (rec) {
+        recommendationProfile = {
+          categoryAffinities: rec.categoryAffinities || {},
+          creatorAffinities: rec.creatorAffinities || {},
+          totalCompletedWatches: rec.totalCompletedWatches || 0,
+          totalWatchSeconds: rec.totalWatchSeconds || 0,
+          updatedAt: rec.updatedAt,
+        };
+      }
+    } catch {
+      // Non-fatal
+    }
+
     const exportData = {
       exportDate: new Date().toISOString(),
       account: user,
@@ -79,6 +112,8 @@ export async function GET() {
       savedContent,
       searchHistory,
       connectedProviders: providers,
+      connectedOAuthAccount,
+      recommendationProfile,
     };
 
     return new Response(JSON.stringify(exportData, null, 2), {

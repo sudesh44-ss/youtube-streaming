@@ -3,6 +3,8 @@
  * Does not store API keys, passwords, session tokens, or sensitive credentials.
  */
 
+import { isConsentGranted } from "./cookie-consent";
+
 export interface SavedMediaItem {
   videoId: string;
   title: string;
@@ -52,7 +54,7 @@ function isBrowser(): boolean {
 }
 
 function safeGetItems(key: string): SavedMediaItem[] {
-  if (!isBrowser()) return [];
+  if (!isBrowser() || !isConsentGranted("functional")) return [];
   try {
     const raw = window.localStorage.getItem(key);
     if (!raw) return [];
@@ -69,7 +71,7 @@ function safeGetItems(key: string): SavedMediaItem[] {
 }
 
 function safeSetItems(key: string, items: SavedMediaItem[]): void {
-  if (!isBrowser()) return;
+  if (!isBrowser() || !isConsentGranted("functional")) return;
   try {
     window.localStorage.setItem(key, JSON.stringify(items));
     window.dispatchEvent(new CustomEvent(STORAGE_CHANGE_EVENT, { detail: { key } }));
@@ -189,7 +191,7 @@ export function isLikedLocally(videoId: string): boolean {
 }
 
 export function toggleLocalLike(videoId: string): boolean {
-  if (!isBrowser() || !videoId) return false;
+  if (!isBrowser() || !videoId || !isConsentGranted("functional")) return false;
   const likes = getLocalLikes();
   const next = !likes[videoId];
   if (next) {
@@ -210,7 +212,7 @@ export function toggleLocalLike(videoId: string): boolean {
  * Watch History operations (stored in omnidiscover_watch_history_v1)
  */
 export function getWatchHistory(): WatchHistoryItem[] {
-  if (!isBrowser()) return [];
+  if (!isBrowser() || !isConsentGranted("functional")) return [];
   try {
     const raw = window.localStorage.getItem(STORAGE_KEYS.WATCH_HISTORY);
     if (!raw) return [];
@@ -229,7 +231,7 @@ export function getWatchHistory(): WatchHistoryItem[] {
 export function addToWatchHistory(
   item: Omit<WatchHistoryItem, "lastWatched"> & { lastWatched?: number }
 ): void {
-  if (!isBrowser() || !item.videoId) return;
+  if (!isBrowser() || !item.videoId || !isConsentGranted("functional")) return;
   try {
     const history = getWatchHistory();
     // Remove if already exists so we can move it to the top with updated timestamp
@@ -278,7 +280,7 @@ export function clearWatchHistory(): void {
  * Search History operations (stored in omnidiscover_search_history_v1)
  */
 export function getSearchHistory(): SearchHistoryItem[] {
-  if (!isBrowser()) return [];
+  if (!isBrowser() || !isConsentGranted("functional")) return [];
   try {
     const raw = window.localStorage.getItem(STORAGE_KEYS.SEARCH_HISTORY);
     if (!raw) return [];
@@ -298,7 +300,7 @@ export function addToSearchHistory(
   entry: { query: string; searchMode?: string; searchTab?: "videos" | "channels"; category?: string; videoType?: string }
 ): void {
   const trimmed = entry.query.trim();
-  if (!isBrowser() || !trimmed) return;
+  if (!isBrowser() || !trimmed || !isConsentGranted("functional")) return;
   try {
     const history = getSearchHistory();
     // Normalize and remove duplicate consecutive/identical query for same searchTab
