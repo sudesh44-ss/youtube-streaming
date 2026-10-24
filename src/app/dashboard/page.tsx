@@ -13,9 +13,11 @@ import { ApiKeyRequirement } from "@/components/ApiKeyRequirement";
 import { SlidersHorizontal, RefreshCw, AlertCircle, Compass, Bookmark, Users, Video } from "lucide-react";
 import Link from "next/link";
 import { addToSearchHistory } from "@/lib/local-storage";
+import { useTranslation } from "@/lib/i18n/LanguageContext";
 
 export default function DashboardPage() {
   const router = useRouter();
+  const { t } = useTranslation();
 
   // Authentication & session state
   const [user, setUser] = useState<any>(null);
@@ -81,8 +83,11 @@ export default function DashboardPage() {
     setActiveItem(item);
   };
 
-  // Request race-condition guard
+  // Request race-condition & cancellation guards
   const requestIdRef = useRef(0);
+  const abortControllerRef = useRef<AbortController | null>(null);
+  const feedAbortRef = useRef<AbortController | null>(null);
+  const initialFetchInitiatedRef = useRef(false);
   const lastProcessedUrlQueryRef = useRef<string | null>(null);
 
   // Check authentication with resilient network drop tolerance
@@ -120,10 +125,12 @@ export default function DashboardPage() {
 
     return () => {
       isMounted = false;
+      if (abortControllerRef.current) abortControllerRef.current.abort();
+      if (feedAbortRef.current) feedAbortRef.current.abort();
     };
   }, [router]);
 
-  // Load real watch progress for Continue Watching row
+  // Load real watch progress for Continue Watching row (deferred to avoid competing with main feed)
   const fetchWatchHistory = useCallback(async () => {
     try {
       const res = await fetch("/api/content/watch-progress");
@@ -158,7 +165,11 @@ export default function DashboardPage() {
 
   useEffect(() => {
     if (user) {
-      fetchWatchHistory();
+      // Defer non-critical continue watching fetch slightly so main video grid loads first
+      const timeout = setTimeout(() => {
+        fetchWatchHistory();
+      }, 300);
+      return () => clearTimeout(timeout);
     }
   }, [user, fetchWatchHistory]);
 
@@ -168,6 +179,13 @@ export default function DashboardPage() {
       const activeQuery = overrideQuery !== undefined ? overrideQuery : submittedQuery;
       const activeVideoType = overrideVideoType !== undefined ? overrideVideoType : videoType;
       const currentReqId = ++requestIdRef.current;
+
+      // Abort any obsolete in-flight search or filter request
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+      }
+      const controller = new AbortController();
+      abortControllerRef.current = controller;
 
       setLoading(true);
       setError(null);
@@ -187,7 +205,7 @@ export default function DashboardPage() {
           ? `/api/content/search?${params.toString()}`
           : `/api/content/recommendations?${params.toString()}`;
 
-        const res = await fetch(endpoint);
+        const res = await fetch(endpoint, { signal: controller.signal });
         const data = await res.json();
 
         // Stale response guard: discard if a newer request was dispatched
@@ -228,7 +246,8 @@ export default function DashboardPage() {
             setChannelResults([]);
           }
         }
-      } catch {
+      } catch (err: any) {
+        if (err.name === "AbortError") return;
         if (currentReqId === requestIdRef.current) {
           setError("Network error while communicating with discovery service.");
         }
@@ -339,6 +358,18 @@ export default function DashboardPage() {
   const isStreamingDefaultView = mode === "normal" && !submittedQuery.trim() && !selectedCategory;
 
   useEffect(() => {
+    // Start initial content retrieval immediately on mount (runs concurrently with auth session check)
+    if (!initialFetchInitiatedRef.current) {
+      initialFetchInitiatedRef.current = true;
+      if (isStreamingDefaultView) {
+        fetchFeed();
+      } else {
+        fetchContent();
+      }
+      return;
+    }
+
+    // Subsequent updates when user switches mode, category, or search query
     if (user) {
       if (isStreamingDefaultView) {
         fetchFeed();
@@ -509,7 +540,7 @@ export default function DashboardPage() {
 
           <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
             <SlidersHorizontal size={14} />
-            <span>Sort by:</span>
+            <span>{t("search.sortBy") || "Sort by:"}</span>
             <select
               value={sortBy}
               onChange={(e) => setSortBy(e.target.value as any)}
@@ -521,9 +552,9 @@ export default function DashboardPage() {
                 width: "auto",
               }}
             >
-              <option value="relevance">Relevance</option>
-              <option value="date">Publication Date</option>
-              <option value="title">Title (A-Z)</option>
+              <option value="relevance">{t("search.relevance") || "Relevance"}</option>
+              <option value="date">{t("search.date") || "Publication Date"}</option>
+              <option value="title">{t("search.titleSort") || "Title (A-Z)"}</option>
             </select>
 
             <button
@@ -558,7 +589,7 @@ export default function DashboardPage() {
             <span>{error}</span>
           </div>
           <button onClick={() => fetchContent()} className="btn btn-outline btn-sm">
-            Retry
+            {t("common.retry") || "Retry"}
           </button>
         </div>
       )}
@@ -637,7 +668,7 @@ export default function DashboardPage() {
             className={`btn btn-sm ${searchTab === "videos" ? "btn-primary" : "btn-outline"}`}
             style={{ borderRadius: "var(--radius-full)", padding: "0.35rem 0.875rem" }}
           >
-            <span>Videos</span>
+            <span>{t("common.videos") || "Videos"}</span>
             <span style={{ opacity: 0.85, fontSize: "0.75rem", marginLeft: "0.35rem" }}>
               ({items.length})
             </span>
@@ -649,7 +680,7 @@ export default function DashboardPage() {
             className={`btn btn-sm ${searchTab === "channels" ? "btn-primary" : "btn-outline"}`}
             style={{ borderRadius: "var(--radius-full)", padding: "0.35rem 0.875rem" }}
           >
-            <span>Channels</span>
+            <span>{t("common.channels") || "Channels"}</span>
             <span style={{ opacity: 0.85, fontSize: "0.75rem", marginLeft: "0.35rem" }}>
               ({channelResults.length})
             </span>
@@ -717,7 +748,7 @@ export default function DashboardPage() {
                     <span>Loading Next 20 Videos...</span>
                   </>
                 ) : (
-                  <span>Load More Videos</span>
+                  <span>{t("dashboard.loadMore") || "Load More Videos"}</span>
                 )}
               </button>
             </div>

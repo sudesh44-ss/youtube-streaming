@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef } from "react";
 import { Search, X, Clock, RefreshCw } from "lucide-react";
+import { useTranslation } from "@/lib/i18n/LanguageContext";
 
 interface SearchBarProps {
   value: string;
@@ -66,9 +67,11 @@ export function SearchBar({
     setShowHistory(false);
   };
 
+  const { t } = useTranslation();
+
   const placeholder = isCategoryMode && categoryName
     ? `Search within ${categoryName}...`
-    : "Search educational courses, music, movies, gaming, technology...";
+    : (t("nav.searchPlaceholder") || "Search videos, channels, and playlists...");
 
   return (
     <div ref={containerRef} style={{ position: "relative", width: "100%", marginBottom: "1.5rem" }}>

@@ -20,11 +20,29 @@ import {
 import { ThemeToggle } from "./ThemeToggle";
 import { clearLocalUserCollections } from "@/lib/local-storage";
 import { isSupabaseConfigured, createClient } from "@/lib/supabase/client";
+import { useTranslation } from "@/lib/i18n/LanguageContext";
 
 interface UserInfo {
   id: string;
   email: string;
   name: string;
+}
+
+// Client-side in-flight session deduplication to prevent concurrent duplicate requests
+let inFlightSessionPromise: Promise<any> | null = null;
+
+async function fetchSessionShared(): Promise<any> {
+  if (inFlightSessionPromise) return inFlightSessionPromise;
+  inFlightSessionPromise = fetch("/api/auth/session")
+    .then(async (res) => {
+      const data = res.ok ? await res.json() : null;
+      return { status: res.status, data };
+    })
+    .catch(() => null)
+    .finally(() => {
+      inFlightSessionPromise = null;
+    });
+  return inFlightSessionPromise;
 }
 
 const AUTH_NAV_ITEMS = [
@@ -53,6 +71,7 @@ const DISCOVER_SECTIONS = [
 export function Navbar() {
   const router = useRouter();
   const pathname = usePathname();
+  const { t } = useTranslation();
   const [user, setUser] = useState<UserInfo | null>(null);
   const [loading, setLoading] = useState(true);
   const [menuOpen, setMenuOpen] = useState(false);
@@ -62,17 +81,16 @@ export function Navbar() {
 
   const checkSession = useCallback(async () => {
     try {
-      const res = await fetch("/api/auth/session");
-      if (!res.ok) {
-        // Only clear user on explicit 401 or 403; keep session on transient 5xx server issues
-        if (res.status === 401 || res.status === 403) {
-          setUser(null);
-        }
+      const response = await fetchSessionShared();
+      if (!response) return;
+
+      if (response.status === 401 || response.status === 403) {
+        setUser(null);
         return;
       }
-      const data = await res.json();
-      if (data.session?.user) {
-        setUser(data.session.user);
+
+      if (response.data?.session?.user) {
+        setUser(response.data.session.user);
       } else {
         setUser(null);
       }
@@ -191,33 +209,70 @@ export function Navbar() {
   };
 
   const isAuthenticated = !loading && Boolean(user);
+
+  const authNavItems = [
+    { label: t("nav.dashboard") || "Dashboard", href: "/dashboard", icon: Compass },
+    { label: t("nav.watchlist") || "Watchlist", href: "/dashboard/saved", icon: Bookmark },
+    { label: t("nav.history") || "Watch History", href: "/dashboard/history", icon: Clock },
+    { label: t("nav.searchHistory") || "Search History", href: "/dashboard/search-history", icon: Search },
+    { label: t("nav.settings") || "Settings", href: "/settings", icon: Settings },
+  ];
+
+  const publicNavItems = [
+    { label: "Features", href: "/#features", icon: Sparkles },
+    { label: t("nav.categories") || "Categories", href: "/#categories", icon: Layers },
+    { label: t("nav.help") || "Help Center", href: "/help", icon: HelpCircle },
+    { label: "Privacy", href: "/privacy", icon: ShieldCheck },
+    { label: "Terms", href: "/terms", icon: FileText },
+  ];
+
   const visibleMenuItems = isAuthenticated
-    ? [...AUTH_NAV_ITEMS, ...PUBLIC_NAV_ITEMS]
-    : PUBLIC_NAV_ITEMS;
+    ? [...authNavItems, ...publicNavItems]
+    : publicNavItems;
 
   return (
     <header className="navbar-header">
       <div className="container nav-container">
-        {/* Logo */}
-        <Link
-          href={user ? "/dashboard" : "/"}
-          className="nav-logo"
-        >
-          <div className="nav-logo-icon">
-            <Compass size={20} />
-          </div>
-          <span>Omni<span style={{ color: "var(--primary)" }}>Discover</span></span>
-        </Link>
+        {/* Brand */}
+        <div className="nav-brand-group">
+          <Link
+            href={user ? "/dashboard" : "/"}
+            className="nav-logo"
+          >
+            <div className="nav-logo-icon">
+              <Compass size={20} />
+            </div>
+            <span>Omni<span style={{ color: "var(--primary)" }}>Discover</span></span>
+          </Link>
+        </div>
 
         {/* Action Controls & Menu Trigger */}
         <div className="nav-actions">
+          {/* Portfolio Attribution Link */}
+          <a
+            href="https://sudeshcreation.shop"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="nav-portfolio-link"
+            title="Portfolio • sudeshcreation.shop"
+            aria-label="Creator Portfolio"
+          >
+            <img
+              src="/icons/portfolio_logo.png"
+              alt="Sudesh Creation"
+              width={24}
+              height={24}
+              className="nav-portfolio-img"
+            />
+          </a>
+
           {!loading && !user && (
             <div className="nav-auth-buttons">
               <Link href="/auth/signin" className="btn btn-outline btn-sm">
-                Sign In
+                {t("nav.signIn") || "Sign In"}
               </Link>
               <Link href="/auth/signup" className="btn btn-primary btn-sm">
-                Get Started
+                {t("nav.signUp") || "Get Started"}
               </Link>
             </div>
           )}
@@ -242,6 +297,40 @@ export function Navbar() {
               aria-hidden="true"
             />
           </button>
+
+          {/* Platform Switcher: YouTube & YouTube Music — Immediately right of Menu Button, Authenticated Only */}
+          {!loading && Boolean(user) && (
+            <div className="nav-app-switcher" role="group" aria-label="Switch Platform">
+              <Link
+                href="/dashboard"
+                className={`app-switcher-btn ${!pathname?.startsWith("/music") ? "active" : ""}`}
+                title="YouTube"
+                aria-label="YouTube"
+              >
+                <img
+                  src="/icons/youtube.png"
+                  alt="YouTube"
+                  width={20}
+                  height={20}
+                  className="app-switcher-icon"
+                />
+              </Link>
+              <Link
+                href="/music"
+                className={`app-switcher-btn ${pathname?.startsWith("/music") ? "active" : ""}`}
+                title="YouTube Music"
+                aria-label="YouTube Music"
+              >
+                <img
+                  src="/icons/youtube-music.png"
+                  alt="YouTube Music"
+                  width={20}
+                  height={20}
+                  className="app-switcher-icon"
+                />
+              </Link>
+            </div>
+          )}
 
           {/* Desktop Dropdown Panel */}
           {menuOpen && (
@@ -390,10 +479,10 @@ export function Navbar() {
                         handleLogout();
                       }}
                       className="btn btn-outline btn-sm menu-signout-btn"
-                      title="Sign Out"
+                      title={t("nav.signOut") || "Sign Out"}
                     >
                       <LogOut size={14} />
-                      <span>Sign Out</span>
+                      <span>{t("nav.signOut") || "Sign Out"}</span>
                     </button>
                   </div>
                 ) : (
@@ -404,7 +493,7 @@ export function Navbar() {
                       className="btn btn-outline btn-sm"
                       style={{ width: "100%", justifyContent: "center" }}
                     >
-                      Sign In
+                      {t("nav.signIn") || "Sign In"}
                     </Link>
                     <Link
                       href="/auth/signup"
@@ -412,7 +501,7 @@ export function Navbar() {
                       className="btn btn-primary btn-sm"
                       style={{ width: "100%", justifyContent: "center" }}
                     >
-                      Get Started
+                      {t("nav.signUp") || "Get Started"}
                     </Link>
                   </div>
                 )}
@@ -453,21 +542,40 @@ export function Navbar() {
                 <span>Omni<span style={{ color: "var(--primary)" }}>Discover</span></span>
               </Link>
 
-              <button
-                type="button"
-                onClick={() => setMenuOpen(false)}
-                className="btn btn-outline btn-sm drawer-close-btn"
-                aria-label="Close navigation menu"
-              >
-                <img
-                  src="/icons/close.png"
-                  alt=""
-                  width={16}
-                  height={16}
-                  className="nav-menu-icon-img"
-                  aria-hidden="true"
-                />
-              </button>
+              <div className="drawer-header-actions">
+                <a
+                  href="https://sudeshcreation.shop"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="drawer-portfolio-link"
+                  title="Portfolio • sudeshcreation.shop"
+                  aria-label="Creator Portfolio"
+                >
+                  <img
+                    src="/icons/portfolio_logo.png"
+                    alt="Portfolio"
+                    width={22}
+                    height={22}
+                    className="portfolio-badge-img"
+                  />
+                </a>
+
+                <button
+                  type="button"
+                  onClick={() => setMenuOpen(false)}
+                  className="btn btn-outline btn-sm drawer-close-btn"
+                  aria-label="Close navigation menu"
+                >
+                  <img
+                    src="/icons/close.png"
+                    alt=""
+                    width={16}
+                    height={16}
+                    className="nav-menu-icon-img"
+                    aria-hidden="true"
+                  />
+                </button>
+              </div>
             </div>
 
             {/* Drawer Nav Items */}
@@ -645,14 +753,14 @@ export function Navbar() {
           position: sticky;
           top: 0;
           z-index: 50;
-          background-color: rgba(9, 13, 22, 0.88);
+          background-color: var(--navbar-bg, rgba(17, 18, 18, 0.88));
           backdrop-filter: blur(12px);
           border-bottom: 1px solid var(--border-color);
           transition: background-color 0.2s ease, border-color 0.2s ease;
         }
 
         :global([data-theme="light"]) .navbar-header {
-          background-color: rgba(255, 255, 255, 0.92);
+          background-color: var(--navbar-bg, rgba(255, 255, 255, 0.92));
         }
 
         .nav-container {
@@ -660,6 +768,127 @@ export function Navbar() {
           align-items: center;
           justify-content: space-between;
           height: 64px;
+        }
+
+        .nav-brand-group {
+          display: flex;
+          align-items: center;
+          gap: 1.125rem;
+        }
+
+        .nav-app-switcher {
+          display: flex;
+          align-items: center;
+          gap: 0.5rem;
+          background: transparent;
+          border: none;
+          padding: 0;
+          margin-left: 0.125rem;
+        }
+
+        .app-switcher-btn {
+          width: 36px;
+          height: 36px;
+          border-radius: 50%;
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          background-color: var(--bg-surface-elevated);
+          border: 1px solid var(--border-color);
+          transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+          cursor: pointer;
+          text-decoration: none;
+          box-sizing: border-box;
+          outline: none;
+          flex-shrink: 0;
+        }
+
+        .app-switcher-btn:hover {
+          background-color: var(--bg-subtle);
+          border-color: var(--border-focus);
+          transform: scale(1.06);
+        }
+
+        .app-switcher-btn:focus-visible {
+          outline: 2px solid var(--primary);
+          outline-offset: 2px;
+        }
+
+        /* Active highlight: subtle light-red background for the active platform */
+        .app-switcher-btn.active {
+          background-color: rgba(239, 68, 68, 0.16);
+          border-color: rgba(239, 68, 68, 0.45);
+          box-shadow: 0 0 12px rgba(239, 68, 68, 0.25);
+        }
+
+        :global([data-theme="light"]) .app-switcher-btn.active {
+          background-color: rgba(239, 68, 68, 0.12);
+          border-color: rgba(239, 68, 68, 0.35);
+          box-shadow: 0 2px 8px rgba(239, 68, 68, 0.15);
+        }
+
+        .app-switcher-icon {
+          width: 20px;
+          height: 20px;
+          object-fit: contain;
+          border-radius: 50%;
+          display: block;
+        }
+
+        .nav-portfolio-link {
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          width: 34px;
+          height: 34px;
+          border-radius: 50%;
+          border: 1px solid var(--border-color);
+          background-color: var(--bg-surface-elevated);
+          transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+          overflow: hidden;
+          flex-shrink: 0;
+          text-decoration: none;
+        }
+
+        .nav-portfolio-link:hover {
+          border-color: var(--primary);
+          transform: translateY(-1px) scale(1.05);
+          box-shadow: 0 2px 10px rgba(56, 189, 248, 0.25);
+        }
+
+        .nav-portfolio-img {
+          width: 22px;
+          height: 22px;
+          object-fit: contain;
+        }
+
+        .drawer-header-actions {
+          display: flex;
+          align-items: center;
+          gap: 0.5rem;
+        }
+
+        .drawer-portfolio-link {
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          width: 32px;
+          height: 32px;
+          border-radius: 50%;
+          border: 1px solid var(--border-color);
+          background-color: var(--bg-surface-elevated);
+          transition: all 0.2s ease;
+        }
+
+        .drawer-portfolio-link:hover {
+          border-color: var(--primary);
+          transform: scale(1.05);
+        }
+
+        .portfolio-badge-img {
+          width: 20px;
+          height: 20px;
+          object-fit: contain;
         }
 
         .nav-logo {
@@ -808,7 +1037,7 @@ export function Navbar() {
         .menu-panel-list {
           display: flex;
           flex-direction: column;
-          gap: 0.25rem;
+          gap: 1rem;
           width: 100%;
           box-sizing: border-box;
         }

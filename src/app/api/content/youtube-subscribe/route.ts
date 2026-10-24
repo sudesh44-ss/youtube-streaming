@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getCurrentSession } from "@/lib/auth";
-import { getDb } from "@/lib/db";
-import { decryptSecret } from "@/lib/crypto";
+import { getOAuthConnectionAsync } from "@/lib/data-service";
 
 export const dynamic = "force-dynamic";
 
@@ -26,14 +25,8 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Invalid action. Must be 'subscribe' or 'unsubscribe'." }, { status: 400 });
     }
 
-    const db = getDb();
-    const row = db
-      .prepare(
-        "SELECT encrypted_access_token, iv, auth_tag FROM oauth_connections WHERE user_id = ? AND provider = 'youtube'"
-      )
-      .get(session.user.id) as { encrypted_access_token: string; iv: string; auth_tag: string } | undefined;
-
-    if (!row) {
+    const conn = await getOAuthConnectionAsync(session.user.id, "youtube");
+    if (!conn || !conn.accessToken) {
       return NextResponse.json(
         {
           error: "YouTube account not connected. Please connect your YouTube account in Settings to manage subscriptions.",
@@ -43,15 +36,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    let accessToken: string;
-    try {
-      accessToken = decryptSecret(row.encrypted_access_token, row.iv, row.auth_tag);
-    } catch {
-      return NextResponse.json(
-        { error: "Failed to decrypt YouTube authorization. Please reconnect your account." },
-        { status: 400 }
-      );
-    }
+    const accessToken = conn.accessToken;
 
     if (action === "subscribe") {
       const url = "https://www.googleapis.com/youtube/v3/subscriptions?part=snippet";

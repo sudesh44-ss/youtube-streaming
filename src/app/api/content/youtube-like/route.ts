@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getCurrentSession } from "@/lib/auth";
-import { getDb } from "@/lib/db";
-import { decryptSecret } from "@/lib/crypto";
+import { getOAuthConnectionAsync } from "@/lib/data-service";
 
 export const dynamic = "force-dynamic";
 
@@ -26,21 +25,8 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    const db = getDb();
-    const row = db
-      .prepare(
-        "SELECT encrypted_access_token, iv, auth_tag, expires_at FROM oauth_connections WHERE user_id = ? AND provider = 'youtube'"
-      )
-      .get(session.user.id) as
-      | {
-          encrypted_access_token: string;
-          iv: string;
-          auth_tag: string;
-          expires_at?: number;
-        }
-      | undefined;
-
-    if (!row) {
+    const conn = await getOAuthConnectionAsync(session.user.id, "youtube");
+    if (!conn || !conn.accessToken) {
       return NextResponse.json({
         success: true,
         localOnly: true,
@@ -51,19 +37,7 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    // Decrypt access token
-    let accessToken: string;
-    try {
-      accessToken = decryptSecret(row.encrypted_access_token, row.iv, row.auth_tag);
-    } catch (e) {
-      console.error("Token decryption failed:", e);
-      return NextResponse.json({
-        success: true,
-        localOnly: true,
-        youtubeAction: "error",
-        message: "YouTube authorization token could not be decrypted. Saved locally.",
-      });
-    }
+    const accessToken = conn.accessToken;
 
     // Call official YouTube Data API v3 videos/rate
     const ytUrl = `https://www.googleapis.com/youtube/v3/videos/rate?id=${encodeURIComponent(

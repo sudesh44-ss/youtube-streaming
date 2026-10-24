@@ -74,14 +74,24 @@ export async function setSessionCookie(rawToken: string) {
 }
 
 export async function clearSessionCookie() {
-  const cookieStore = await cookies();
-  const rawToken = cookieStore.get(SESSION_COOKIE)?.value;
+  let cookieStore: any;
+  try {
+    cookieStore = await cookies();
+  } catch {
+    return;
+  }
+
+  const rawToken = cookieStore?.get(SESSION_COOKIE)?.value;
   if (rawToken) {
     const tokenHash = hashToken(rawToken);
     const db = getDb();
     db.prepare("DELETE FROM sessions WHERE token_hash = ?").run(tokenHash);
   }
-  cookieStore.delete(SESSION_COOKIE);
+  try {
+    cookieStore?.delete(SESSION_COOKIE);
+  } catch {
+    // Ignore
+  }
 
   if (isSupabaseServerConfigured()) {
     try {
@@ -93,9 +103,57 @@ export async function clearSessionCookie() {
   }
 }
 
+export function resolveCountryAndLanguage(prefData: any): {
+  country: string;
+  language: "en" | "hi";
+  preferredLanguages: string[];
+} {
+  let country = prefData?.country && typeof prefData.country === "string" ? prefData.country.toUpperCase() : "US";
+  let language: "en" | "hi" = "en";
+  let rawLangs: string[] = [];
+
+  if (Array.isArray(prefData?.preferred_languages)) {
+    rawLangs = prefData.preferred_languages;
+  } else if (typeof prefData?.preferred_languages === "string") {
+    try {
+      rawLangs = JSON.parse(prefData.preferred_languages);
+    } catch {
+      rawLangs = [prefData.preferred_languages];
+    }
+  }
+
+  for (const item of rawLangs) {
+    if (typeof item === "string") {
+      if (item.startsWith("country:")) {
+        country = item.replace("country:", "").toUpperCase();
+      } else if (item === "hi" || item === "en") {
+        language = item;
+      }
+    }
+  }
+
+  if (prefData?.language === "hi" || prefData?.language === "en") {
+    language = prefData.language;
+  }
+
+  const cleanLanguages = rawLangs.filter((l) => typeof l === "string" && !l.startsWith("country:"));
+  return {
+    country,
+    language,
+    preferredLanguages: cleanLanguages.length > 0 ? cleanLanguages : [language],
+  };
+}
+
 export async function getCurrentSession(): Promise<UserSession | null> {
-  const cookieStore = await cookies();
-  const rawToken = cookieStore.get(SESSION_COOKIE)?.value;
+  let cookieStore: any;
+  try {
+    cookieStore = await cookies();
+  } catch {
+    // Handle invocation outside of active request scope or during static prerendering
+    return null;
+  }
+
+  const rawToken = cookieStore?.get(SESSION_COOKIE)?.value;
 
   if (!rawToken) {
     // If no SQLite session cookie is present, bridge to Supabase Auth if configured
@@ -116,6 +174,8 @@ export async function getCurrentSession(): Promise<UserSession | null> {
             // Non-fatal preferences fallback
           }
 
+          const { country, language, preferredLanguages } = resolveCountryAndLanguage(prefData);
+
           return {
             user: {
               id: sbUser.id,
@@ -127,7 +187,9 @@ export async function getCurrentSession(): Promise<UserSession | null> {
             preferences: {
               defaultMode: (prefData?.default_mode as BrowsingMode) || "normal",
               preferredCategories: prefData?.preferred_categories || ["technology", "music"],
-              preferredLanguages: prefData?.preferred_languages || ["en"],
+              preferredLanguages,
+              country,
+              language,
               theme: prefData?.theme || "system",
               layoutDensity: prefData?.layout_density || "comfortable",
               reducedMotion: Boolean(prefData?.reduced_motion),
@@ -186,6 +248,13 @@ export async function getCurrentSession(): Promise<UserSession | null> {
       }
     }
 
+    const resolvedRegional = resolveCountryAndLanguage(prefRow);
+    const country = resolvedRegional.country;
+    const language = resolvedRegional.language;
+    if (resolvedRegional.preferredLanguages?.length) {
+      preferredLanguages = resolvedRegional.preferredLanguages;
+    }
+
     return {
       user: {
         id: sessionRow.user_id,
@@ -198,6 +267,8 @@ export async function getCurrentSession(): Promise<UserSession | null> {
         defaultMode: (prefRow?.default_mode as BrowsingMode) || "normal",
         preferredCategories,
         preferredLanguages,
+        country,
+        language,
         theme: prefRow?.theme || "system",
         layoutDensity: prefRow?.layout_density || "comfortable",
         reducedMotion: Boolean(prefRow?.reduced_motion),

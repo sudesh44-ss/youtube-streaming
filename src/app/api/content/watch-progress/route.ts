@@ -5,18 +5,30 @@ import { getDb } from "@/lib/db";
 import { isSupabaseServerConfigured, createServerSupabaseClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { checkRateLimit, getClientIp, rateLimitExceededResponse, RATE_LIMIT_POLICIES } from "@/lib/rate-limit";
+import { ServerTimer } from "@/lib/timing";
 
 export const dynamic = "force-dynamic";
 
 export async function GET() {
+  const timer = new ServerTimer();
   try {
+    timer.start("auth");
     const session = await getCurrentSession();
+    timer.end("auth");
+
     if (!session) {
-      return NextResponse.json({ success: true, history: [] });
+      const res = NextResponse.json({ success: true, history: [] });
+      res.headers.set("Server-Timing", timer.toHeader());
+      return res;
     }
 
+    timer.start("db_progress");
     const rows = await getWatchProgressForUser(session.user.id);
-    return NextResponse.json({ success: true, history: rows });
+    timer.end("db_progress");
+
+    const res = NextResponse.json({ success: true, history: rows });
+    res.headers.set("Server-Timing", timer.toHeader());
+    return res;
   } catch (err) {
     console.error("Watch progress GET error:", err);
     return NextResponse.json({ error: "Failed to load watch progress." }, { status: 500 });

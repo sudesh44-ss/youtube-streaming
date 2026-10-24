@@ -4,6 +4,10 @@ import "./globals.css";
 import { Navbar } from "@/components/Navbar";
 import { Footer } from "@/components/Footer";
 import { ThemeProvider } from "@/components/ThemeProvider";
+import { LanguageProvider } from "@/lib/i18n/LanguageContext";
+import { CookieConsent } from "@/components/CookieConsent";
+import { MiniPlayerProvider } from "@/lib/MiniPlayerContext";
+import { FloatingMiniPlayer } from "@/components/FloatingMiniPlayer";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -36,11 +40,17 @@ export default function RootLayout({
       </head>
       <body style={{ minHeight: "100vh", display: "flex", flexDirection: "column" }}>
         <ThemeProvider>
-          <Navbar />
-          <main style={{ flex: 1, display: "flex", flexDirection: "column" }}>
-            {children}
-          </main>
-          <Footer />
+          <LanguageProvider>
+            <MiniPlayerProvider>
+              <Navbar />
+              <main style={{ flex: 1, display: "flex", flexDirection: "column" }}>
+                {children}
+              </main>
+              <Footer />
+              <FloatingMiniPlayer />
+              <CookieConsent />
+            </MiniPlayerProvider>
+          </LanguageProvider>
         </ThemeProvider>
       </body>
     </html>

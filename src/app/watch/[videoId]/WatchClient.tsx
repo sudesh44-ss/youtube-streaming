@@ -14,9 +14,16 @@ import {
   ExternalLink,
   Share2,
   AlertCircle,
-  ChevronDown,
-  ChevronUp,
+  PictureInPicture2,
+  Minimize2,
+  Bell,
+  Loader2,
 } from "lucide-react";
+import { useTranslation } from "@/lib/i18n/LanguageContext";
+import { useInAppBack } from "@/lib/useInAppBack";
+import { useMiniPlayer } from "@/lib/MiniPlayerContext";
+import { VideoDescriptionRenderer } from "@/components/VideoDescriptionRenderer";
+import { RelatedVideosFeed } from "@/components/RelatedVideosFeed";
 import {
   isInLocalWatchlist,
   isInLocalWatchLater,
@@ -42,7 +49,7 @@ function parseTimeToSeconds(val: string | null): number {
   if (hoursMatch) total += parseInt(hoursMatch[1], 10) * 3600;
   if (minsMatch) total += parseInt(minsMatch[1], 10) * 60;
   if (secsMatch) total += parseInt(secsMatch[1], 10);
-  return total > 0 ? total : parseInt(val, 10) || 0;
+  return total;
 }
 
 interface WatchClientProps {
@@ -52,12 +59,42 @@ interface WatchClientProps {
 
 export default function WatchClient({ videoId, initialTitle }: WatchClientProps) {
   const router = useRouter();
+  const handleBack = useInAppBack("/dashboard");
+  const { openMiniPlayer } = useMiniPlayer();
   const searchParams = useSearchParams();
   const initialTime = parseTimeToSeconds(searchParams ? (searchParams.get("t") || searchParams.get("start")) : null);
+  const [currentInitialTime, setInitialTime] = useState(initialTime);
+  const iframeRef = useRef<HTMLIFrameElement>(null);
+  const { t } = useTranslation();
 
   // Playback state: starts FALSE so video does not autoplay on page load
   const [isPlaying, setIsPlaying] = useState(false);
   const [playbackSeconds, setPlaybackSeconds] = useState(initialTime);
+
+  // Picture-in-Picture state
+  const [isPipActive, setIsPipActive] = useState(false);
+  const [isPipSupported, setIsPipSupported] = useState(false);
+  const pipWindowRef = useRef<any>(null);
+
+  // Feature detect Document Picture-in-Picture support
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      setIsPipSupported("documentPictureInPicture" in window);
+    }
+  }, []);
+
+  // Clean up PiP window on unmount
+  useEffect(() => {
+    return () => {
+      if (pipWindowRef.current) {
+        try {
+          pipWindowRef.current.close();
+        } catch {
+          // Ignore close error on unmount
+        }
+      }
+    };
+  }, []);
 
   // Share Modal state
   const [shareOpen, setShareOpen] = useState(false);
@@ -76,13 +113,14 @@ export default function WatchClient({ videoId, initialTitle }: WatchClientProps)
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // Description expand/collapse
-  const [isDescExpanded, setIsDescExpanded] = useState(false);
-
   // Interactive local states
   const [isLiked, setIsLiked] = useState(false);
   const [inWatchlist, setInWatchlist] = useState(false);
   const [inWatchLater, setInWatchLater] = useState(false);
+
+  // Channel subscription state
+  const [isChannelSubscribed, setIsChannelSubscribed] = useState(false);
+  const [subscribingChannel, setSubscribingChannel] = useState(false);
 
   // YouTube OAuth connection & confirmation state
   const [isYtConnected, setIsYtConnected] = useState(false);
@@ -107,46 +145,34 @@ export default function WatchClient({ videoId, initialTitle }: WatchClientProps)
 
   useEffect(() => {
     syncStorageStates();
-    const handleStorageChange = () => syncStorageStates();
-    window.addEventListener(STORAGE_CHANGE_EVENT, handleStorageChange);
-    return () => window.removeEventListener(STORAGE_CHANGE_EVENT, handleStorageChange);
+    window.addEventListener(STORAGE_CHANGE_EVENT, syncStorageStates);
+    return () => {
+      window.removeEventListener(STORAGE_CHANGE_EVENT, syncStorageStates);
+    };
   }, [syncStorageStates]);
 
-  // Handle escape key and click outside for three-dot menu
+  // Close context menu when clicking outside
   useEffect(() => {
     if (!menuOpen) return;
-
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
-        setMenuOpen(false);
-        menuBtnRef.current?.focus();
-      }
-    };
-
-    const handlePointerDown = (e: PointerEvent) => {
-      const target = e.target as Node;
+    const handleClickOutside = (e: MouseEvent) => {
       if (
         menuRef.current &&
-        !menuRef.current.contains(target) &&
+        !menuRef.current.contains(e.target as Node) &&
         menuBtnRef.current &&
-        !menuBtnRef.current.contains(target)
+        !menuBtnRef.current.contains(e.target as Node)
       ) {
         setMenuOpen(false);
       }
     };
-
-    document.addEventListener("keydown", handleKeyDown);
-    document.addEventListener("pointerdown", handlePointerDown);
-    return () => {
-      document.removeEventListener("keydown", handleKeyDown);
-      document.removeEventListener("pointerdown", handlePointerDown);
-    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
   }, [menuOpen]);
 
-  // Fetch metadata from API route
+  // Fetch full video details
   useEffect(() => {
     let isMounted = true;
     setLoading(true);
+    setError(null);
 
     const titleParam = initialTitle ? `&title=${encodeURIComponent(initialTitle)}` : "";
     fetch(`/api/content/details?id=${encodeURIComponent(videoId)}${titleParam}`)
@@ -228,7 +254,6 @@ export default function WatchClient({ videoId, initialTitle }: WatchClientProps)
   // Play button click handler
   const handleStartPlay = () => {
     setIsPlaying(true);
-    // Record in local watch history
     if (videoId) {
       addToWatchHistory({
         videoId,
@@ -240,7 +265,6 @@ export default function WatchClient({ videoId, initialTitle }: WatchClientProps)
         playbackPosition: playbackSeconds,
       });
 
-      // Record real watch progress in background for continue watching
       fetch("/api/content/watch-progress", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -254,6 +278,66 @@ export default function WatchClient({ videoId, initialTitle }: WatchClientProps)
           progressSeconds: 180,
         }),
       }).catch(() => {});
+    }
+  };
+
+  // Timestamp seeking in embedded video player
+  const handleSeekTimestamp = (seconds: number) => {
+    if (!isPlaying) {
+      setInitialTime(seconds);
+      setIsPlaying(true);
+    } else if (iframeRef.current?.contentWindow) {
+      iframeRef.current.contentWindow.postMessage(
+        JSON.stringify({
+          event: "command",
+          func: "seekTo",
+          args: [seconds, true],
+        }),
+        "*"
+      );
+    }
+  };
+
+  // Miniplayer detachment
+  const handleTriggerMiniplayer = () => {
+    openMiniPlayer({
+      videoId,
+      title: item?.title || initialTitle || "YouTube Video",
+      channelTitle: item?.creator || "YouTube Creator",
+      thumbnail: item?.thumbnail || `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`,
+      currentTime: playbackSeconds || currentInitialTime || 0,
+    });
+    handleBack();
+  };
+
+  // Subscribe to channel
+  const handleToggleChannelSubscribe = async () => {
+    if (!item?.channelId || subscribingChannel) return;
+    setSubscribingChannel(true);
+    const newAction = isChannelSubscribed ? "unsubscribe" : "subscribe";
+    try {
+      const res = await fetch("/api/content/youtube-subscribe", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          channelId: item.channelId,
+          action: newAction,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        if (data.requiresConnect) {
+          alert("To subscribe to YouTube creators directly, please connect your YouTube account in Settings.");
+          return;
+        }
+        throw new Error(data.error || "Subscription request failed.");
+      }
+      setIsChannelSubscribed(newAction === "subscribe");
+      showFeedback(newAction === "subscribe" ? "Subscribed to channel!" : "Unsubscribed from channel.");
+    } catch (err: any) {
+      alert(err.message || "Failed to update subscription");
+    } finally {
+      setSubscribingChannel(false);
     }
   };
 
@@ -291,11 +375,11 @@ export default function WatchClient({ videoId, initialTitle }: WatchClientProps)
   // Watchlist Toggle
   const handleToggleWatchlist = () => {
     if (!item && !initialTitle) return;
-    const title = item?.title || initialTitle || "YouTube Video";
+    const currentTitle = item?.title || initialTitle || "YouTube Video";
     const thumb = item?.thumbnail || `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`;
     const next = toggleLocalWatchlist({
       videoId,
-      title,
+      title: currentTitle,
       thumbnailUrl: thumb,
       channelId: item?.channelId,
       channelTitle: item?.creator,
@@ -311,11 +395,11 @@ export default function WatchClient({ videoId, initialTitle }: WatchClientProps)
   // Watch Later Toggle
   const handleToggleWatchLater = () => {
     if (!item && !initialTitle) return;
-    const title = item?.title || initialTitle || "YouTube Video";
+    const currentTitle = item?.title || initialTitle || "YouTube Video";
     const thumb = item?.thumbnail || `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`;
     const next = toggleLocalWatchLater({
       videoId,
-      title,
+      title: currentTitle,
       thumbnailUrl: thumb,
       channelId: item?.channelId,
       channelTitle: item?.creator,
@@ -326,6 +410,80 @@ export default function WatchClient({ videoId, initialTitle }: WatchClientProps)
     setInWatchLater(next);
     setMenuOpen(false);
     showFeedback(next ? "Added to Watch Later" : "Removed from Watch Later");
+  };
+
+  // Document Picture-in-Picture Toggle
+  const handleTogglePip = async () => {
+    if (isPipActive && pipWindowRef.current) {
+      try {
+        pipWindowRef.current.close();
+      } catch {}
+      setIsPipActive(false);
+      pipWindowRef.current = null;
+      return;
+    }
+
+    if (!isPipSupported) {
+      showFeedback(t("watch.pipUnsupported"));
+      return;
+    }
+
+    try {
+      if (!isPlaying) {
+        setIsPlaying(true);
+      }
+
+      const pipWindow = await (window as any).documentPictureInPicture.requestWindow({
+        width: 640,
+        height: 360,
+      });
+      pipWindowRef.current = pipWindow;
+
+      [...document.styleSheets].forEach((styleSheet) => {
+        try {
+          if (styleSheet.href) {
+            const link = document.createElement("link");
+            link.rel = "stylesheet";
+            link.type = styleSheet.type || "text/css";
+            link.media = styleSheet.media?.mediaText || "all";
+            link.href = styleSheet.href;
+            pipWindow.document.head.appendChild(link);
+          }
+        } catch {}
+      });
+
+      pipWindow.document.body.style.margin = "0";
+      pipWindow.document.body.style.backgroundColor = "#000";
+      pipWindow.document.body.style.overflow = "hidden";
+      pipWindow.document.body.style.display = "flex";
+      pipWindow.document.body.style.height = "100vh";
+      pipWindow.document.body.style.width = "100vw";
+
+      const pipIframe = document.createElement("iframe");
+      pipIframe.src = `https://www.youtube-nocookie.com/embed/${encodeURIComponent(
+        videoId
+      )}?autoplay=1&rel=0&modestbranding=1&enablejsapi=1${
+        playbackSeconds > 0 ? `&start=${playbackSeconds}` : ""
+      }`;
+      pipIframe.title = item?.title || initialTitle || "Video";
+      pipIframe.allow =
+        "accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share";
+      pipIframe.allowFullscreen = true;
+      pipIframe.style.width = "100%";
+      pipIframe.style.height = "100%";
+      pipIframe.style.border = "none";
+
+      pipWindow.document.body.appendChild(pipIframe);
+      setIsPipActive(true);
+
+      pipWindow.addEventListener("pagehide", () => {
+        setIsPipActive(false);
+        pipWindowRef.current = null;
+      });
+    } catch (err: any) {
+      console.warn("PiP activation error:", err);
+      showFeedback(t("watch.pipUnsupported"));
+    }
   };
 
   // Open Share Modal
@@ -364,11 +522,11 @@ export default function WatchClient({ videoId, initialTitle }: WatchClientProps)
         "--dynamic-border": palette.borderHighlight,
       } as React.CSSProperties}
     >
-      {/* Top Navigation Row: Back Button */}
+      {/* Top Navigation Row: Context-Aware Back Button */}
       <div className="watch-nav-bar">
         <button
           type="button"
-          onClick={() => router.back()}
+          onClick={handleBack}
           className="btn btn-outline btn-sm watch-back-btn"
           aria-label="Back to discovery list"
         >
@@ -389,12 +547,10 @@ export default function WatchClient({ videoId, initialTitle }: WatchClientProps)
 
       {/* Main Video Presentation Grid */}
       <div className="watch-layout">
-        {/* Left / Main Column: Video Area + Information */}
         <div className="watch-main-column">
           {/* Video Player Box (16:9 Aspect Ratio) */}
           <div className="video-player-wrapper">
             {!isPlaying ? (
-              /* Initial State: Video Thumbnail with prominent Play Button */
               <div className="video-poster-box">
                 <img
                   src={thumbnail}
@@ -406,7 +562,6 @@ export default function WatchClient({ videoId, initialTitle }: WatchClientProps)
                 />
                 <div className="video-poster-scrim" />
 
-                {/* Prominent Play Button Overlay */}
                 <button
                   type="button"
                   onClick={handleStartPlay}
@@ -423,13 +578,13 @@ export default function WatchClient({ videoId, initialTitle }: WatchClientProps)
                 </div>
               </div>
             ) : (
-              /* Active Playback: Official Embedded YouTube Player */
               <div className="video-iframe-box">
                 <iframe
+                  ref={iframeRef}
                   src={`https://www.youtube-nocookie.com/embed/${encodeURIComponent(
                     videoId
                   )}?autoplay=1&rel=0&modestbranding=1&enablejsapi=1${
-                    initialTime > 0 ? `&start=${initialTime}` : ""
+                    currentInitialTime > 0 ? `&start=${currentInitialTime}` : ""
                   }`}
                   title={title}
                   allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
@@ -490,31 +645,110 @@ export default function WatchClient({ videoId, initialTitle }: WatchClientProps)
 
             {/* Channel Info & Action Buttons Row */}
             <div className="watch-action-bar">
-              {/* Channel Profile */}
+              {/* Channel Profile Link */}
               <div className="channel-profile-group">
-                <div className="channel-avatar-circle">
-                  {channelAvatar ? (
-                    <img
-                      src={channelAvatar}
-                      alt={creator}
-                      className="channel-avatar-img"
-                      onError={(e) => {
-                        (e.target as HTMLImageElement).style.display = "none";
-                      }}
-                    />
-                  ) : null}
-                  <div className="channel-avatar-fallback">{channelInitial}</div>
-                </div>
+                {item?.channelId ? (
+                  <Link href={`/channel/${item.channelId}`} className="channel-profile-link" title={`View ${creator} channel`}>
+                    <div className="channel-avatar-circle">
+                      {channelAvatar ? (
+                        <img
+                          src={channelAvatar}
+                          alt={creator}
+                          className="channel-avatar-img"
+                          onError={(e) => {
+                            (e.target as HTMLImageElement).style.display = "none";
+                          }}
+                        />
+                      ) : null}
+                      <div className="channel-avatar-fallback">{channelInitial}</div>
+                    </div>
 
-                <div className="channel-names">
-                  <h3 className="channel-title">{creator}</h3>
-                  <p className="channel-subs">{subscriberCount}</p>
-                </div>
+                    <div className="channel-names">
+                      <h3 className="channel-title">{creator}</h3>
+                      <p className="channel-subs">{subscriberCount}</p>
+                    </div>
+                  </Link>
+                ) : (
+                  <div className="channel-profile-link static">
+                    <div className="channel-avatar-circle">
+                      {channelAvatar ? (
+                        <img
+                          src={channelAvatar}
+                          alt={creator}
+                          className="channel-avatar-img"
+                          onError={(e) => {
+                            (e.target as HTMLImageElement).style.display = "none";
+                          }}
+                        />
+                      ) : null}
+                      <div className="channel-avatar-fallback">{channelInitial}</div>
+                    </div>
+
+                    <div className="channel-names">
+                      <h3 className="channel-title">{creator}</h3>
+                      <p className="channel-subs">{subscriberCount}</p>
+                    </div>
+                  </div>
+                )}
+
+                {item?.channelId && (
+                  <button
+                    type="button"
+                    onClick={handleToggleChannelSubscribe}
+                    disabled={subscribingChannel}
+                    className={`btn btn-sm channel-sub-pill ${isChannelSubscribed ? "subscribed" : "btn-primary"}`}
+                    title={isChannelSubscribed ? "Subscribed to channel" : "Subscribe to channel"}
+                  >
+                    {subscribingChannel ? (
+                      <Loader2 size={14} className="spin" />
+                    ) : isChannelSubscribed ? (
+                      <>
+                        <Check size={14} />
+                        <span>Subscribed</span>
+                      </>
+                    ) : (
+                      <>
+                        <Bell size={14} />
+                        <span>Subscribe</span>
+                      </>
+                    )}
+                  </button>
+                )}
               </div>
 
-              {/* Action Buttons: Like, Share, YouTube External, Three-Dot Menu */}
+              {/* Action Buttons: Picture-in-Picture, Miniplayer, Like, Share, YouTube External, Three-Dot Menu */}
               <div className="video-action-buttons">
-                {/* Single Unified Like Button */}
+                {/* 1. Picture-in-Picture Button */}
+                <button
+                  type="button"
+                  onClick={handleTogglePip}
+                  className={`btn btn-sm watch-action-btn ${isPipActive ? "active-like" : "btn-outline"}`}
+                  title={
+                    isPipActive
+                      ? t("watch.pipActive")
+                      : isPipSupported
+                      ? t("watch.pipTooltip")
+                      : t("watch.pipUnsupported")
+                  }
+                  aria-label={t("watch.pip")}
+                >
+                  <PictureInPicture2 size={16} fill={isPipActive ? "currentColor" : "none"} />
+                  <span className="action-label-desktop">{isPipActive ? t("watch.pipActive") : t("watch.pip")}</span>
+                </button>
+
+                {/* 2. Floating Miniplayer Button */}
+                <button
+                  type="button"
+                  onClick={handleTriggerMiniplayer}
+                  className="btn btn-outline btn-sm watch-action-btn"
+                  title="Detached Floating Miniplayer"
+                  aria-label="Floating Miniplayer"
+                >
+                  <Minimize2 size={16} />
+                  <span className="action-label-desktop">Miniplayer</span>
+                </button>
+
+                {/* 3. Like Button */}
                 <button
                   type="button"
                   onClick={handleToggleLike}
@@ -523,7 +757,7 @@ export default function WatchClient({ videoId, initialTitle }: WatchClientProps)
                     isLiked
                       ? isYtConfirmed
                         ? "Liked locally & confirmed on YouTube"
-                        : "Saved to your Liked videos (Local preference)"
+                        : "Saved to your Liked videos"
                       : isYtConnected
                       ? "Like video and sync with YouTube"
                       : "Like video locally"
@@ -531,35 +765,35 @@ export default function WatchClient({ videoId, initialTitle }: WatchClientProps)
                   aria-label={isLiked ? "Unlike video" : "Like video"}
                 >
                   <ThumbsUp size={16} fill={isLiked ? "currentColor" : "none"} />
-                  <span>{isLiked ? (isYtConfirmed ? "Liked (YouTube)" : "Liked") : "Like"}</span>
+                  <span>{isLiked ? (isYtConfirmed ? "Liked" : "Liked") : "Like"}</span>
                 </button>
 
-                {/* Share Button */}
+                {/* 4. Share Button */}
                 <button
                   type="button"
                   onClick={handleShare}
                   className="btn btn-outline btn-sm watch-action-btn"
-                  title="Copy video link"
+                  title="Share video link"
                   aria-label="Share video link"
                 >
                   <Share2 size={16} />
                   <span className="action-label-desktop">Share</span>
                 </button>
 
-                {/* Watch on YouTube External Link */}
+                {/* 5. Watch on YouTube External Link */}
                 <a
                   href={`https://www.youtube.com/watch?v=${videoId}`}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="btn btn-outline btn-sm watch-action-btn"
-                  title="Watch directly on YouTube (if embed is restricted)"
+                  title="Watch directly on YouTube"
                   aria-label="Open on YouTube"
                 >
                   <span>YouTube</span>
                   <ExternalLink size={14} />
                 </a>
 
-                {/* Three-Dot Menu Button */}
+                {/* 6. Three-Dot Menu */}
                 <div style={{ position: "relative" }}>
                   <button
                     ref={menuBtnRef}
@@ -573,10 +807,8 @@ export default function WatchClient({ videoId, initialTitle }: WatchClientProps)
                     <MoreVertical size={18} />
                   </button>
 
-                  {/* Three-Dot Context Menu */}
                   {menuOpen && (
                     <div ref={menuRef} role="menu" className="watch-action-menu">
-                      {/* 1. Add to Watchlist */}
                       <button
                         type="button"
                         role="menuitem"
@@ -591,7 +823,6 @@ export default function WatchClient({ videoId, initialTitle }: WatchClientProps)
                         <span>{inWatchlist ? "In Watchlist" : "Add to Watchlist"}</span>
                       </button>
 
-                      {/* 2. Watch Later */}
                       <button
                         type="button"
                         role="menuitem"
@@ -611,35 +842,23 @@ export default function WatchClient({ videoId, initialTitle }: WatchClientProps)
               </div>
             </div>
 
-            {/* Expandable / Collapsible Description Box */}
-            <div className="watch-description-box">
-              <div className={`description-content ${isDescExpanded ? "expanded" : "clamped"}`}>
-                {item?.description ? (
-                  <p style={{ whiteSpace: "pre-line" }}>{item.description}</p>
-                ) : (
-                  <p style={{ color: "var(--text-muted)" }}>
-                    No description provided for this video. Use the YouTube embed above or external link to view full
-                    details.
-                  </p>
-                )}
-              </div>
+            {/* Interactive Description Box with Timestamps and Safe Links */}
+            <VideoDescriptionRenderer
+              description={item?.description || ""}
+              onSeek={handleSeekTimestamp}
+            />
 
-              {item?.description && item.description.length > 180 && (
-                <button
-                  type="button"
-                  onClick={() => setIsDescExpanded(!isDescExpanded)}
-                  className="description-toggle-btn"
-                >
-                  <span>{isDescExpanded ? "Show less" : "Show more"}</span>
-                  {isDescExpanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
-                </button>
-              )}
-            </div>
+            {/* Contextual Related Video Recommendations */}
+            <RelatedVideosFeed
+              currentVideoId={videoId}
+              title={title}
+              category={item?.category}
+            />
           </div>
         </div>
       </div>
 
-      {/* Floating Status Notification / Toast */}
+      {/* Toast Notice */}
       {feedback && (
         <div className="watch-toast-notice">
           <Check size={16} style={{ color: "var(--accent-emerald)" }} />
@@ -707,11 +926,10 @@ export default function WatchClient({ videoId, initialTitle }: WatchClientProps)
           width: 100%;
         }
 
-        /* 16:9 Video Player Wrapper */
         .video-player-wrapper {
           position: relative;
           width: 100%;
-          padding-top: 56.25%; /* 16:9 Aspect Ratio */
+          padding-top: 56.25%;
           background-color: #000000;
           border-radius: var(--radius-lg);
           overflow: hidden;
@@ -725,7 +943,6 @@ export default function WatchClient({ videoId, initialTitle }: WatchClientProps)
           display: flex;
           align-items: center;
           justify-content: center;
-          background-color: #030712;
         }
 
         .video-poster-image {
@@ -734,46 +951,56 @@ export default function WatchClient({ videoId, initialTitle }: WatchClientProps)
           width: 100%;
           height: 100%;
           object-fit: cover;
-          opacity: 0.88;
         }
 
         .video-poster-scrim {
           position: absolute;
           inset: 0;
-          background: radial-gradient(circle at center, rgba(0, 0, 0, 0.2) 0%, rgba(0, 0, 0, 0.65) 100%);
+          background: linear-gradient(
+            to top,
+            rgba(0, 0, 0, 0.75) 0%,
+            rgba(0, 0, 0, 0.25) 50%,
+            rgba(0, 0, 0, 0.5) 100%
+          );
         }
 
         .prominent-play-button {
           position: relative;
           z-index: 10;
-          width: 80px;
-          height: 80px;
+          width: 76px;
+          height: 76px;
           border-radius: 50%;
-          background: var(--dynamic-play-btn, linear-gradient(135deg, #ef4444, #dc2626));
-          border: 3px solid rgba(255, 255, 255, 0.85);
+          background-color: var(--dynamic-play-btn, rgba(239, 68, 68, 0.95));
+          border: none;
           display: flex;
           align-items: center;
           justify-content: center;
           cursor: pointer;
-          box-shadow: var(--dynamic-play-glow, 0 8px 25px rgba(239, 68, 68, 0.5));
-          transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.25s ease, background 0.5s ease;
+          box-shadow: 0 4px 24px var(--dynamic-play-glow, rgba(239, 68, 68, 0.5));
+          transition: transform 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275), box-shadow 0.2s ease;
         }
 
         .prominent-play-button:hover {
-          transform: scale(1.12);
-          box-shadow: 0 14px 40px var(--dynamic-glow, rgba(239, 68, 68, 0.7));
+          transform: scale(1.1);
+        }
+
+        .play-icon-pulse {
+          display: flex;
+          align-items: center;
+          justify-content: center;
         }
 
         .video-preview-badge {
           position: absolute;
-          bottom: 1rem;
-          background-color: rgba(0, 0, 0, 0.75);
-          color: #f8fafc;
+          bottom: 1.25rem;
           padding: 0.375rem 0.875rem;
-          border-radius: var(--radius-full);
-          font-size: 0.8125rem;
-          font-weight: 500;
+          border-radius: 9999px;
+          background-color: rgba(0, 0, 0, 0.65);
           backdrop-filter: blur(8px);
+          color: rgba(255, 255, 255, 0.9);
+          font-size: 0.75rem;
+          font-weight: 500;
+          letter-spacing: 0.02em;
           border: 1px solid rgba(255, 255, 255, 0.15);
         }
 
@@ -785,26 +1012,22 @@ export default function WatchClient({ videoId, initialTitle }: WatchClientProps)
         }
 
         .video-iframe {
-          position: absolute;
-          top: 0;
-          left: 0;
           width: 100%;
           height: 100%;
           border: none;
         }
 
-        /* Details Card */
         .video-details-card {
           display: flex;
           flex-direction: column;
-          gap: 1.25rem;
+          gap: 1rem;
         }
 
         .watch-video-title {
-          font-size: clamp(1.25rem, 2.5vw, 1.75rem);
+          font-size: 1.375rem;
           font-weight: 700;
           color: var(--text-main);
-          line-height: 1.3;
+          line-height: 1.35;
           margin: 0;
         }
 
@@ -812,7 +1035,9 @@ export default function WatchClient({ videoId, initialTitle }: WatchClientProps)
           display: flex;
           align-items: center;
           justify-content: space-between;
-          font-size: 0.875rem;
+          flex-wrap: wrap;
+          gap: 0.75rem;
+          font-size: 0.8125rem;
           color: var(--text-muted);
         }
 
@@ -820,14 +1045,12 @@ export default function WatchClient({ videoId, initialTitle }: WatchClientProps)
           display: flex;
           align-items: center;
           gap: 0.5rem;
-          flex-wrap: wrap;
         }
 
         .meta-separator {
           color: var(--text-dim);
         }
 
-        /* Action Bar */
         .watch-action-bar {
           display: flex;
           align-items: center;
@@ -842,7 +1065,20 @@ export default function WatchClient({ videoId, initialTitle }: WatchClientProps)
         .channel-profile-group {
           display: flex;
           align-items: center;
+          gap: 1rem;
+        }
+
+        .channel-profile-link {
+          display: flex;
+          align-items: center;
           gap: 0.75rem;
+          text-decoration: none;
+          color: inherit;
+          transition: opacity 0.15s ease;
+        }
+
+        .channel-profile-link:hover:not(.static) {
+          opacity: 0.85;
         }
 
         .channel-avatar-circle {
@@ -894,6 +1130,24 @@ export default function WatchClient({ videoId, initialTitle }: WatchClientProps)
           margin: 0;
         }
 
+        .channel-sub-pill {
+          padding: 0.35rem 0.875rem;
+          border-radius: 9999px;
+          display: inline-flex;
+          align-items: center;
+          gap: 0.375rem;
+          font-weight: 600;
+          font-size: 0.8125rem;
+          cursor: pointer;
+          transition: all 0.15s ease;
+        }
+
+        .channel-sub-pill.subscribed {
+          background-color: var(--bg-surface-elevated);
+          color: var(--text-main);
+          border: 1px solid var(--border-color);
+        }
+
         .video-action-buttons {
           display: flex;
           align-items: center;
@@ -905,40 +1159,38 @@ export default function WatchClient({ videoId, initialTitle }: WatchClientProps)
           display: inline-flex;
           align-items: center;
           gap: 0.375rem;
-          border-radius: var(--radius-full);
-          padding: 0.45rem 0.875rem;
+          font-size: 0.8125rem;
+          padding: 0.4rem 0.75rem;
+          border-radius: 9999px;
         }
 
-        .active-like {
-          background-color: var(--dynamic-accent, rgba(56, 189, 248, 0.15)) !important;
-          border-color: var(--dynamic-accent, var(--primary)) !important;
-          color: var(--dynamic-text-on-accent, #ffffff) !important;
-          font-weight: 600;
-          box-shadow: 0 2px 10px var(--dynamic-glow, transparent);
+        .watch-action-btn.active-like {
+          background-color: var(--dynamic-badge-bg, rgba(56, 189, 248, 0.15));
+          border-color: var(--dynamic-accent, var(--primary));
+          color: var(--dynamic-accent, var(--primary));
         }
 
         .watch-threedot-btn {
-          border-radius: var(--radius-full);
-          padding: 0.45rem;
-          width: 36px;
-          height: 36px;
+          padding: 0.4rem;
+          border-radius: 50%;
           display: flex;
           align-items: center;
           justify-content: center;
+          min-width: 34px;
+          min-height: 34px;
         }
 
-        /* Three-Dot Context Menu */
         .watch-action-menu {
           position: absolute;
           top: calc(100% + 6px);
           right: 0;
-          z-index: 50;
+          width: 190px;
           background-color: var(--bg-surface);
           border: 1px solid var(--border-color);
           border-radius: var(--radius-md);
           box-shadow: var(--shadow-lg);
           padding: 0.375rem;
-          min-width: 180px;
+          z-index: 50;
           display: flex;
           flex-direction: column;
           gap: 0.25rem;
@@ -948,94 +1200,49 @@ export default function WatchClient({ videoId, initialTitle }: WatchClientProps)
           display: flex;
           align-items: center;
           gap: 0.625rem;
-          padding: 0.625rem 0.75rem;
-          background: transparent;
-          border: none;
+          padding: 0.5rem 0.625rem;
           border-radius: var(--radius-sm);
+          font-size: 0.8125rem;
           color: var(--text-main);
-          font-size: 0.875rem;
-          font-weight: 500;
+          background: none;
+          border: none;
           cursor: pointer;
-          text-align: left;
           width: 100%;
+          text-align: left;
           transition: background-color 0.15s ease;
         }
 
         .menu-action-item:hover {
           background-color: var(--bg-subtle);
-          color: var(--primary);
         }
 
         .menu-action-item.active-item {
-          color: var(--primary);
-          font-weight: 600;
+          color: var(--accent-emerald);
+          font-weight: 500;
         }
 
-        /* Description Box */
-        .watch-description-box {
+        .watch-toast-notice {
+          position: fixed;
+          bottom: 24px;
+          right: 24px;
+          display: flex;
+          align-items: center;
+          gap: 0.5rem;
+          padding: 0.625rem 1rem;
           background-color: var(--bg-surface-elevated);
           border: 1px solid var(--border-color);
           border-radius: var(--radius-md);
-          padding: 1.125rem 1.25rem;
-          font-size: 0.9375rem;
           color: var(--text-main);
-          line-height: 1.6;
-        }
-
-        .description-content.clamped {
-          display: -webkit-box;
-          -webkit-line-clamp: 3;
-          -webkit-box-orient: vertical;
-          overflow: hidden;
-        }
-
-        .description-content.expanded {
-          display: block;
-        }
-
-        .description-toggle-btn {
-          margin-top: 0.625rem;
-          background: none;
-          border: none;
-          color: var(--primary);
-          font-size: 0.8125rem;
-          font-weight: 600;
-          cursor: pointer;
-          display: inline-flex;
-          align-items: center;
-          gap: 0.25rem;
-          padding: 0;
-        }
-
-        /* Toast Feedback */
-        .watch-toast-notice {
-          position: fixed;
-          bottom: 2rem;
-          right: 2rem;
-          z-index: 100;
-          background-color: var(--bg-surface);
-          border: 1px solid var(--border-color);
-          box-shadow: var(--shadow-lg);
-          padding: 0.75rem 1.25rem;
-          border-radius: var(--radius-full);
-          display: flex;
-          align-items: center;
-          gap: 0.625rem;
           font-size: 0.875rem;
-          font-weight: 600;
-          color: var(--text-main);
-          animation: slideUpToast 0.25s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+          font-weight: 500;
+          box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+          z-index: 999;
+          animation: toastIn 0.2s cubic-bezier(0.16, 1, 0.3, 1) forwards;
         }
 
-        @keyframes slideUpToast {
-          from {
-            opacity: 0;
-            transform: translateY(12px);
-          }
-          to {
-            opacity: 1;
-            transform: translateY(0);
-          }
+        @keyframes toastIn {
+          0% { opacity: 0; transform: translateY(12px); }
+          100% { opacity: 1; transform: translateY(0); }
         }
 
         @media (max-width: 640px) {
@@ -1046,9 +1253,13 @@ export default function WatchClient({ videoId, initialTitle }: WatchClientProps)
             flex-direction: column;
             align-items: flex-start;
           }
+          .channel-profile-group {
+            width: 100%;
+            justify-content: space-between;
+          }
           .video-action-buttons {
             width: 100%;
-            justify-content: flex-start;
+            justify-content: space-between;
           }
         }
       `}</style>

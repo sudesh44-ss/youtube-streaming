@@ -1,9 +1,7 @@
 import { IProviderAdapter, ProviderValidationResult } from "./types";
 import { NormalizedContentItem, SearchFilters, YouTubeChannelItem } from "../types";
 import { CURATED_CATALOG, CURATED_CHANNELS } from "./curated-data";
-
-// Non-sensitive channel avatar cache to prevent redundant quota usage across requests
-const channelAvatarCache = new Map<string, string>();
+import { appCache, CACHE_TTLS } from "../cache-service";
 
 async function getChannelAvatars(channelIds: string[], apiKey: string): Promise<Map<string, string>> {
   const avatarMap = new Map<string, string>();
@@ -11,33 +9,37 @@ async function getChannelAvatars(channelIds: string[], apiKey: string): Promise<
 
   for (const id of channelIds) {
     if (!id) continue;
-    if (channelAvatarCache.has(id)) {
-      avatarMap.set(id, channelAvatarCache.get(id)!);
+    const cached = appCache.get<string>(`avatar:${id}`);
+    if (cached) {
+      avatarMap.set(id, cached);
     } else {
       toFetch.push(id);
     }
   }
 
   if (toFetch.length > 0) {
-    try {
-      const idsParam = encodeURIComponent(toFetch.slice(0, 50).join(","));
-      const url = `https://www.googleapis.com/youtube/v3/channels?part=snippet&id=${idsParam}&key=${encodeURIComponent(apiKey.trim())}`;
-      const res = await fetch(url, { signal: AbortSignal.timeout(4000) });
-      if (res.ok) {
-        const data = await res.json();
-        if (Array.isArray(data.items)) {
-          for (const item of data.items) {
-            const avatar = item.snippet?.thumbnails?.default?.url || item.snippet?.thumbnails?.medium?.url;
-            if (avatar) {
-              channelAvatarCache.set(item.id, avatar);
-              avatarMap.set(item.id, avatar);
+    const fetchKey = `avatar_fetch:${toFetch.sort().join(",")}`;
+    await appCache.dedupe(fetchKey, async () => {
+      try {
+        const idsParam = encodeURIComponent(toFetch.slice(0, 50).join(","));
+        const url = `https://www.googleapis.com/youtube/v3/channels?part=snippet&id=${idsParam}&key=${encodeURIComponent(apiKey.trim())}`;
+        const res = await fetch(url, { signal: AbortSignal.timeout(4000) });
+        if (res.ok) {
+          const data = await res.json();
+          if (Array.isArray(data.items)) {
+            for (const item of data.items) {
+              const avatar = item.snippet?.thumbnails?.default?.url || item.snippet?.thumbnails?.medium?.url;
+              if (avatar) {
+                appCache.set(`avatar:${item.id}`, avatar, CACHE_TTLS.CHANNEL_METADATA);
+                avatarMap.set(item.id, avatar);
+              }
             }
           }
         }
+      } catch {
+        // Non-blocking: fail gracefully without breaking video discovery
       }
-    } catch {
-      // Non-blocking: fail gracefully without breaking video discovery
-    }
+    });
   }
 
   return avatarMap;
@@ -174,7 +176,12 @@ export class YouTubeAdapter implements IProviderAdapter {
           }
         }
 
-        const url = `https://www.googleapis.com/youtube/v3/search?part=snippet&maxResults=${limit}&type=video${durationParam}${pageTokenParam}&q=${encodeURIComponent(effectiveQuery)}&key=${encodeURIComponent(apiKey.trim())}`;
+        const regionParam = filters.regionCode ? `&regionCode=${encodeURIComponent(filters.regionCode)}` : "";
+        const langParam = (filters.relevanceLanguage || filters.language)
+          ? `&relevanceLanguage=${encodeURIComponent(filters.relevanceLanguage || filters.language!)}`
+          : "";
+
+        const url = `https://www.googleapis.com/youtube/v3/search?part=snippet&maxResults=${limit}&type=video${durationParam}${regionParam}${langParam}${pageTokenParam}&q=${encodeURIComponent(effectiveQuery)}&key=${encodeURIComponent(apiKey.trim())}`;
         const res = await fetch(url, { signal: AbortSignal.timeout(6000) });
         if (res.ok) {
           const data = await res.json();
@@ -207,6 +214,7 @@ export class YouTubeAdapter implements IProviderAdapter {
                 category: category || "general",
                 publicationDate: item.snippet.publishedAt,
                 creator: item.snippet.channelTitle,
+                channelId: chId,
                 externalUrl: `https://www.youtube.com/watch?v=${item.id.videoId}`,
                 playbackMethod: "iframe_embed" as const,
                 embedUrl: `https://www.youtube.com/embed/${item.id.videoId}`,
@@ -343,11 +351,11 @@ export class YouTubeAdapter implements IProviderAdapter {
                     item.snippet?.thumbnails?.medium?.url ||
                     item.snippet?.thumbnails?.default?.url ||
                     searchThumbnailMap.get(channelId) ||
-                    channelAvatarCache.get(channelId) ||
+                    appCache.get<string>(`avatar:${channelId}`) ||
                     "";
 
                   if (resolvedAvatar) {
-                    channelAvatarCache.set(channelId, resolvedAvatar);
+                    appCache.set(`avatar:${channelId}`, resolvedAvatar, CACHE_TTLS.CHANNEL_METADATA);
                   }
 
                   return {
@@ -464,6 +472,7 @@ export class YouTubeAdapter implements IProviderAdapter {
                 category: "general",
                 publicationDate: item.snippet?.publishedAt,
                 creator: item.snippet?.channelTitle || "Popular Creator",
+                channelId: chId,
                 externalUrl: `https://www.youtube.com/watch?v=${item.id}`,
                 playbackMethod: "iframe_embed" as const,
                 embedUrl: `https://www.youtube.com/embed/${item.id}`,

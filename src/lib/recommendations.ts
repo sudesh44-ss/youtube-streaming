@@ -1,6 +1,6 @@
 import { NormalizedContentItem, BrowsingMode } from "./types";
 import { queryUnifiedContent } from "./providers";
-import { getDb } from "./db";
+import { getUserRecommendationSignalsAsync } from "./data-service";
 
 export interface RecommendationOptions {
   userId?: string;
@@ -8,19 +8,23 @@ export interface RecommendationOptions {
   subcategory?: string;
   mode: BrowsingMode;
   videoType?: "all" | "shorts" | "videos";
+  regionCode?: string;
+  language?: string;
   limit?: number;
 }
 
 export async function getRecommendedContent(options: RecommendationOptions): Promise<NormalizedContentItem[]> {
-  const { userId, category, subcategory, mode, videoType, limit = 16 } = options;
+  const { userId, category, subcategory, mode, videoType, regionCode, language, limit = 16 } = options;
 
-  // 1. Fetch raw items from providers
+  // 1. Fetch raw items from providers with region context
   const items = await queryUnifiedContent(
     {
       category,
       subcategory,
       mode,
       videoType,
+      regionCode,
+      language,
       limit: 40,
     },
     userId
@@ -28,24 +32,15 @@ export async function getRecommendedContent(options: RecommendationOptions): Pro
 
   // 2. Load user preferences & history signals if user is authenticated
   let preferredCategories: string[] = [];
-  const savedCategoryCounts: Record<string, number> = {};
+  let savedCategoryCounts: Record<string, number> = {};
   let recentSearchKeywords: string[] = [];
 
   if (userId) {
     try {
-      const db = getDb();
-      const prefRow = db.prepare("SELECT preferred_categories FROM user_preferences WHERE user_id = ?").get(userId) as any;
-      if (prefRow?.preferred_categories) {
-        preferredCategories = JSON.parse(prefRow.preferred_categories);
-      }
-
-      const savedRows = db.prepare("SELECT category FROM saved_content WHERE user_id = ?").all(userId) as any[];
-      for (const row of savedRows) {
-        savedCategoryCounts[row.category] = (savedCategoryCounts[row.category] || 0) + 1;
-      }
-
-      const searchRows = db.prepare("SELECT query FROM search_history WHERE user_id = ? ORDER BY searched_at DESC LIMIT 5").all(userId) as any[];
-      recentSearchKeywords = searchRows.map((r) => r.query.toLowerCase());
+      const signals = await getUserRecommendationSignalsAsync(userId);
+      preferredCategories = signals.preferredCategories;
+      savedCategoryCounts = signals.savedCategoryCounts;
+      recentSearchKeywords = signals.recentSearchKeywords;
     } catch (e) {
       console.warn("Failed to load user recommendation signals:", e);
     }

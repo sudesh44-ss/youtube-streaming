@@ -1,6 +1,3 @@
-"use client";
-
-import { useState } from "react";
 import Link from "next/link";
 import {
   Compass,
@@ -21,10 +18,11 @@ import {
 } from "lucide-react";
 import { CATEGORIES } from "@/lib/types";
 import { getSubcategoryPalette } from "@/lib/pastel-colors";
+import { InteractiveHeroDemo } from "@/components/InteractiveHeroDemo";
 import { ApiKeyRequirement } from "@/components/ApiKeyRequirement";
 
 export default function LandingPage() {
-  const [demoMode, setDemoMode] = useState<"normal" | "category">("normal");
+  const requiresApiKey = false; // Contextual gate: landing page preview is public; users configure keys in settings/dashboard
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "5rem", paddingBottom: "4rem" }}>
@@ -103,63 +101,14 @@ export default function LandingPage() {
           </div>
 
           {/* Interactive Visual Dashboard Preview */}
-          <div
-            style={{
-              maxWidth: "1000px",
-              margin: "0 auto",
-              borderRadius: "var(--radius-lg)",
-              border: "1px solid var(--border-color)",
-              backgroundColor: "var(--bg-surface)",
-              boxShadow: "0 20px 50px rgba(0,0,0,0.6)",
-              overflow: "hidden",
-            }}
-          >
-            {/* Mock Dashboard Header */}
-            <div
-              style={{
-                display: "flex",
-                flexWrap: "wrap",
-                alignItems: "center",
-                justifyContent: "space-between",
-                padding: "1rem 1.5rem",
-                borderBottom: "1px solid var(--border-color)",
-                backgroundColor: "var(--bg-surface-elevated)",
-                gap: "1rem",
-              }}
-            >
-              <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
-                <span style={{ width: "12px", height: "12px", borderRadius: "50%", backgroundColor: "#ef4444" }} />
-                <span style={{ width: "12px", height: "12px", borderRadius: "50%", backgroundColor: "#f59e0b" }} />
-                <span style={{ width: "12px", height: "12px", borderRadius: "50%", backgroundColor: "#10b981" }} />
-                <span style={{ marginLeft: "0.75rem", fontSize: "0.8125rem", color: "var(--text-dim)", fontWeight: 500 }}>
-                  Discovery Mission Control
-                </span>
-              </div>
+          <InteractiveHeroDemo />
 
-              {/* Interactive Demo Mode Toggle */}
-              <div style={{ display: "flex", gap: "0.375rem" }}>
-                <button
-                  type="button"
-                  onClick={() => setDemoMode("normal")}
-                  className={`chip btn-sm ${demoMode === "normal" ? "chip-active" : ""}`}
-                >
-                  <Sparkles size={14} /> Normal Mode
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setDemoMode("category")}
-                  className={`chip btn-sm ${demoMode === "category" ? "chip-active" : ""}`}
-                >
-                  <Layers size={14} /> Category Mode
-                </button>
-              </div>
+          {/* Contextual API Key Requirement Notice (rendered only when user is missing API key) */}
+          {requiresApiKey && (
+            <div className="container" style={{ marginTop: "2rem" }}>
+              <ApiKeyRequirement />
             </div>
-
-            {/* YouTube API Key Requirement Gate */}
-            <div style={{ padding: "1.5rem" }}>
-              <ApiKeyRequirement style={{ margin: "0 auto", maxWidth: "100%", boxShadow: "none", border: "none" }} />
-            </div>
-          </div>
+          )}
         </div>
       </section>
 
@@ -268,20 +217,9 @@ export default function LandingPage() {
 
       {/* SECTION 5: SECURITY & PRIVACY CONTROLS */}
       <section className="container">
-        <div
-          className="card"
-          style={{
-            padding: "3rem 2rem",
-            background: "linear-gradient(135deg, rgba(30, 41, 59, 0.6), rgba(15, 23, 42, 0.9))",
-            border: "1px solid var(--border-color)",
-            display: "grid",
-            gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))",
-            gap: "2.5rem",
-            alignItems: "center",
-          }}
-        >
+        <div className="card security-promo-card">
           <div>
-            <div style={{ display: "inline-flex", alignItems: "center", gap: "0.375rem", color: "var(--accent-emerald)", fontSize: "0.8125rem", fontWeight: 600, marginBottom: "0.75rem" }}>
+            <div className="security-promo-badge">
               <ShieldCheck size={18} /> Enterprise-Grade Credential Protection
             </div>
             <h2 style={{ fontSize: "1.875rem", fontWeight: 700, marginBottom: "1rem", lineHeight: 1.3 }}>
@@ -302,7 +240,7 @@ export default function LandingPage() {
 
           <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
             <div style={{ display: "flex", gap: "0.75rem", alignItems: "flex-start" }}>
-              <div style={{ width: "24px", height: "24px", borderRadius: "50%", backgroundColor: "rgba(16, 185, 129, 0.2)", color: "var(--accent-emerald)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, marginTop: "2px" }}>
+              <div className="security-check-icon">
                 <Check size={14} />
               </div>
               <div>
@@ -312,7 +250,7 @@ export default function LandingPage() {
             </div>
 
             <div style={{ display: "flex", gap: "0.75rem", alignItems: "flex-start" }}>
-              <div style={{ width: "24px", height: "24px", borderRadius: "50%", backgroundColor: "rgba(16, 185, 129, 0.2)", color: "var(--accent-emerald)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, marginTop: "2px" }}>
+              <div className="security-check-icon">
                 <Check size={14} />
               </div>
               <div>
@@ -322,7 +260,7 @@ export default function LandingPage() {
             </div>
 
             <div style={{ display: "flex", gap: "0.75rem", alignItems: "flex-start" }}>
-              <div style={{ width: "24px", height: "24px", borderRadius: "50%", backgroundColor: "rgba(16, 185, 129, 0.2)", color: "var(--accent-emerald)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, marginTop: "2px" }}>
+              <div className="security-check-icon">
                 <Check size={14} />
               </div>
               <div>
@@ -333,32 +271,6 @@ export default function LandingPage() {
           </div>
         </div>
       </section>
-
-      <style jsx>{`
-        .pastel-bubble {
-          display: inline-flex;
-          align-items: center;
-          padding: 0.25rem 0.65rem;
-          font-size: 0.75rem;
-          font-weight: 500;
-          border-radius: var(--radius-full);
-          background-color: var(--pastel-bg-dark);
-          color: var(--pastel-text-dark);
-          border: 1px solid var(--pastel-border-dark);
-          transition: transform 0.15s ease;
-          line-height: 1.35;
-        }
-
-        :global([data-theme="light"]) .pastel-bubble {
-          background-color: var(--pastel-bg-light);
-          color: var(--pastel-text-light);
-          border-color: var(--pastel-border-light);
-        }
-
-        .pastel-bubble:hover {
-          transform: translateY(-1px);
-        }
-      `}</style>
     </div>
   );
 }

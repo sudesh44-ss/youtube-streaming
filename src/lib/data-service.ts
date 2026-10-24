@@ -697,28 +697,46 @@ export async function deleteSavedContentForUser(
 // ==========================================
 
 export async function updateUserPreferences(userId: string, prefs: any): Promise<void> {
+  let mergedLanguages: string[] | undefined = undefined;
+  if (prefs.preferredLanguages || prefs.language || prefs.country) {
+    const rawLangs: string[] = prefs.preferredLanguages || (prefs.language ? [prefs.language] : ["en"]);
+    const clean = rawLangs.filter((l) => typeof l === "string" && !l.startsWith("country:"));
+    if (prefs.country) {
+      clean.push(`country:${prefs.country.toUpperCase()}`);
+    }
+    mergedLanguages = clean;
+  }
+
   const supabase = await getSupabase();
   if (supabase && isUuid(userId)) {
     try {
-      await supabase.from("user_preferences").upsert(
-        {
-          user_id: userId,
-          default_mode: prefs.defaultMode,
-          preferred_categories: prefs.preferredCategories,
-          preferred_languages: prefs.preferredLanguages,
-          theme: prefs.theme,
-          layout_density: prefs.layoutDensity,
-          reduced_motion: prefs.reducedMotion !== undefined ? Boolean(prefs.reducedMotion) : undefined,
-          high_contrast: prefs.highContrast !== undefined ? Boolean(prefs.highContrast) : undefined,
-          font_scale: prefs.fontScale,
-          email_alerts: prefs.emailAlerts !== undefined ? Boolean(prefs.emailAlerts) : undefined,
-          security_alerts: prefs.securityAlerts !== undefined ? Boolean(prefs.securityAlerts) : undefined,
-          in_app_notifications:
-            prefs.inAppNotifications !== undefined ? Boolean(prefs.inAppNotifications) : undefined,
-          updated_at: new Date().toISOString(),
-        },
-        { onConflict: "user_id" }
-      );
+      const payload: any = {
+        user_id: userId,
+        default_mode: prefs.defaultMode,
+        preferred_categories: prefs.preferredCategories,
+        preferred_languages: mergedLanguages !== undefined ? mergedLanguages : prefs.preferredLanguages,
+        theme: prefs.theme,
+        layout_density: prefs.layoutDensity,
+        reduced_motion: prefs.reducedMotion !== undefined ? Boolean(prefs.reducedMotion) : undefined,
+        high_contrast: prefs.highContrast !== undefined ? Boolean(prefs.highContrast) : undefined,
+        font_scale: prefs.fontScale,
+        email_alerts: prefs.emailAlerts !== undefined ? Boolean(prefs.emailAlerts) : undefined,
+        security_alerts: prefs.securityAlerts !== undefined ? Boolean(prefs.securityAlerts) : undefined,
+        in_app_notifications:
+          prefs.inAppNotifications !== undefined ? Boolean(prefs.inAppNotifications) : undefined,
+        updated_at: new Date().toISOString(),
+      };
+      if (prefs.country) {
+        payload.country = prefs.country.toUpperCase();
+      }
+
+      const { error } = await supabase.from("user_preferences").upsert(payload, { onConflict: "user_id" });
+      if (error && (error.code === "42703" || error.code === "PGRST204" || error.message?.includes("country"))) {
+        // If 'country' column is not yet present on remote Supabase table, retry without 'country' property
+        // The country preference is safely preserved inside preferred_languages!
+        delete payload.country;
+        await supabase.from("user_preferences").upsert(payload, { onConflict: "user_id" });
+      }
     } catch (e) {
       console.warn("Supabase preferences update error:", e);
     }
@@ -731,6 +749,7 @@ export async function updateUserPreferences(userId: string, prefs: any): Promise
         default_mode = COALESCE(?, default_mode),
         preferred_categories = COALESCE(?, preferred_categories),
         preferred_languages = COALESCE(?, preferred_languages),
+        country = COALESCE(?, country),
         theme = COALESCE(?, theme),
         layout_density = COALESCE(?, layout_density),
         reduced_motion = COALESCE(?, reduced_motion),
@@ -744,7 +763,8 @@ export async function updateUserPreferences(userId: string, prefs: any): Promise
     `).run(
       prefs.defaultMode !== undefined ? prefs.defaultMode : null,
       prefs.preferredCategories !== undefined ? JSON.stringify(prefs.preferredCategories) : null,
-      prefs.preferredLanguages !== undefined ? JSON.stringify(prefs.preferredLanguages) : null,
+      mergedLanguages !== undefined ? JSON.stringify(mergedLanguages) : (prefs.preferredLanguages !== undefined ? JSON.stringify(prefs.preferredLanguages) : null),
+      prefs.country !== undefined ? prefs.country.toUpperCase() : null,
       prefs.theme !== undefined ? prefs.theme : null,
       prefs.layoutDensity !== undefined ? prefs.layoutDensity : null,
       prefs.reducedMotion !== undefined ? (prefs.reducedMotion ? 1 : 0) : null,
@@ -786,3 +806,223 @@ export async function updateUserProfile(userId: string, name: string): Promise<v
     // Graceful
   }
 }
+
+// ==========================================
+// 6. RECOMMENDATION SIGNALS
+// ==========================================
+
+export interface UserRecommendationSignals {
+  preferredCategories: string[];
+  savedCategoryCounts: Record<string, number>;
+  recentSearchKeywords: string[];
+  country?: string;
+}
+
+export async function getUserRecommendationSignalsAsync(
+  userId: string
+): Promise<UserRecommendationSignals> {
+  let preferredCategories: string[] = [];
+  const savedCategoryCounts: Record<string, number> = {};
+  let recentSearchKeywords: string[] = [];
+  let country: string | undefined = undefined;
+
+  const supabase = await getSupabase();
+  if (supabase && isUuid(userId)) {
+    try {
+      const [prefRes, savedRes, searchRes] = await Promise.all([
+        supabase.from("user_preferences").select("preferred_categories, preferred_languages").eq("user_id", userId).maybeSingle(),
+        supabase.from("saved_content").select("category").eq("user_id", userId),
+        supabase.from("search_history").select("query").eq("user_id", userId).order("searched_at", { ascending: false }).limit(5),
+      ]);
+
+      if (!prefRes.error && prefRes.data?.preferred_categories) {
+        preferredCategories = Array.isArray(prefRes.data.preferred_categories)
+          ? prefRes.data.preferred_categories
+          : typeof prefRes.data.preferred_categories === "string"
+          ? JSON.parse(prefRes.data.preferred_categories)
+          : [];
+      }
+
+      if (!prefRes.error && prefRes.data?.preferred_languages) {
+        const raw = Array.isArray(prefRes.data.preferred_languages)
+          ? prefRes.data.preferred_languages
+          : typeof prefRes.data.preferred_languages === "string"
+          ? JSON.parse(prefRes.data.preferred_languages)
+          : [];
+        for (const item of raw) {
+          if (typeof item === "string" && item.startsWith("country:")) {
+            country = item.replace("country:", "").toUpperCase();
+          }
+        }
+      }
+
+      if (!savedRes.error && Array.isArray(savedRes.data)) {
+        for (const row of savedRes.data) {
+          if (row.category) {
+            savedCategoryCounts[row.category] = (savedCategoryCounts[row.category] || 0) + 1;
+          }
+        }
+      }
+
+      if (!searchRes.error && Array.isArray(searchRes.data)) {
+        recentSearchKeywords = searchRes.data
+          .map((r: any) => (r.query || "").toLowerCase())
+          .filter(Boolean);
+      }
+
+      return { preferredCategories, savedCategoryCounts, recentSearchKeywords, country };
+    } catch (e) {
+      console.warn("Supabase recommendation signals warning:", e);
+    }
+  }
+
+  // SQLite fallback for local test runner and development
+  try {
+    const db = getDb();
+    const prefRow = db.prepare("SELECT preferred_categories, preferred_languages, country FROM user_preferences WHERE user_id = ?").get(userId) as any;
+    if (prefRow?.preferred_categories) {
+      preferredCategories = JSON.parse(prefRow.preferred_categories);
+    }
+    if (prefRow?.country) {
+      country = prefRow.country.toUpperCase();
+    } else if (prefRow?.preferred_languages) {
+      try {
+        const parsed = JSON.parse(prefRow.preferred_languages);
+        for (const item of parsed) {
+          if (typeof item === "string" && item.startsWith("country:")) {
+            country = item.replace("country:", "").toUpperCase();
+          }
+        }
+      } catch {}
+    }
+
+    const savedRows = db.prepare("SELECT category FROM saved_content WHERE user_id = ?").all(userId) as any[];
+    for (const row of savedRows) {
+      savedCategoryCounts[row.category] = (savedCategoryCounts[row.category] || 0) + 1;
+    }
+
+    const searchRows = db.prepare("SELECT query FROM search_history WHERE user_id = ? ORDER BY searched_at DESC LIMIT 5").all(userId) as any[];
+    recentSearchKeywords = searchRows.map((r) => r.query.toLowerCase());
+  } catch {
+    // Non-fatal
+  }
+
+  return { preferredCategories, savedCategoryCounts, recentSearchKeywords, country };
+}
+
+// ==========================================
+// 7. SAVED ITEM IDS (FOR DISCOVERY OVERLAY)
+// ==========================================
+
+export async function getUserSavedItemIdsAsync(userId: string): Promise<Set<string>> {
+  const savedSet = new Set<string>();
+
+  const supabase = await getSupabase();
+  if (supabase && isUuid(userId)) {
+    try {
+      const { data, error } = await supabase
+        .from("saved_content")
+        .select("provider, content_id")
+        .eq("user_id", userId);
+
+      if (!error && Array.isArray(data)) {
+        for (const row of data) {
+          savedSet.add(`${row.provider}:${row.content_id}`);
+        }
+        return savedSet;
+      }
+    } catch {
+      // Non-fatal
+    }
+  }
+
+  try {
+    const db = getDb();
+    const rows = db.prepare("SELECT provider, content_id FROM saved_content WHERE user_id = ?").all(userId) as any[];
+    for (const row of rows) {
+      savedSet.add(`${row.provider}:${row.content_id}`);
+    }
+  } catch {
+    // Non-fatal
+  }
+
+  return savedSet;
+}
+
+// ==========================================
+// 8. OAUTH CONNECTIONS
+// ==========================================
+
+export interface OAuthConnectionRecord {
+  channelTitle?: string;
+  connectedAt?: number;
+  accessToken?: string;
+  expiresAt?: number;
+}
+
+export async function getOAuthConnectionAsync(
+  userId: string,
+  provider: string = "youtube"
+): Promise<OAuthConnectionRecord | null> {
+  const supabase = await getSupabase();
+  if (supabase && isUuid(userId)) {
+    try {
+      const { data, error } = await supabase
+        .from("oauth_connections")
+        .select("channel_title, updated_at, encrypted_access_token, iv, auth_tag, expires_at")
+        .eq("user_id", userId)
+        .eq("provider", provider)
+        .maybeSingle();
+
+      if (!error && data) {
+        let accessToken: string | undefined = undefined;
+        if (data.encrypted_access_token && data.iv && data.auth_tag) {
+          try {
+            accessToken = decryptSecret(data.encrypted_access_token, data.iv, data.auth_tag);
+          } catch {
+            // Decrypt error
+          }
+        }
+        return {
+          channelTitle: data.channel_title,
+          connectedAt: typeof data.updated_at === "string" ? new Date(data.updated_at).getTime() : data.updated_at,
+          accessToken,
+          expiresAt: data.expires_at,
+        };
+      }
+    } catch {
+      // Non-fatal schema cache or network fallback
+    }
+  }
+
+  try {
+    const db = getDb();
+    const row = db
+      .prepare(
+        "SELECT channel_title, updated_at, encrypted_access_token, iv, auth_tag, expires_at FROM oauth_connections WHERE user_id = ? AND provider = ?"
+      )
+      .get(userId, provider) as any;
+
+    if (row) {
+      let accessToken: string | undefined = undefined;
+      if (row.encrypted_access_token && row.iv && row.auth_tag) {
+        try {
+          accessToken = decryptSecret(row.encrypted_access_token, row.iv, row.auth_tag);
+        } catch {
+          // Decrypt error
+        }
+      }
+      return {
+        channelTitle: row.channel_title,
+        connectedAt: row.updated_at,
+        accessToken,
+        expiresAt: row.expires_at,
+      };
+    }
+  } catch {
+    // Non-fatal
+  }
+
+  return null;
+}
+

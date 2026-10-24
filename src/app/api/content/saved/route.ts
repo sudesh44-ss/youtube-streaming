@@ -1,18 +1,30 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getCurrentSession } from "@/lib/auth";
 import { getSavedContentForUser, saveContentForUser, deleteSavedContentForUser } from "@/lib/data-service";
+import { ServerTimer } from "@/lib/timing";
 
 export const dynamic = "force-dynamic";
 
 export async function GET() {
+  const timer = new ServerTimer();
   try {
+    timer.start("auth");
     const session = await getCurrentSession();
+    timer.end("auth");
+
     if (!session) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+      const res = NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+      res.headers.set("Server-Timing", timer.toHeader());
+      return res;
     }
 
+    timer.start("db_saved");
     const items = await getSavedContentForUser(session.user.id);
-    return NextResponse.json({ success: true, items });
+    timer.end("db_saved");
+
+    const res = NextResponse.json({ success: true, items });
+    res.headers.set("Server-Timing", timer.toHeader());
+    return res;
   } catch (err) {
     console.error("Saved content GET error:", err);
     return NextResponse.json({ error: "Failed to load saved items." }, { status: 500 });

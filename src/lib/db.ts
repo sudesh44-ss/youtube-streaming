@@ -5,49 +5,81 @@ import os from "node:os";
 
 let dbInstance: DatabaseSync | null = null;
 
+export function isServerlessEnvironment(): boolean {
+  return Boolean(
+    process.env.VERCEL ||
+    process.env.AWS_LAMBDA_FUNCTION_NAME ||
+    process.env.LAMBDA_TASK_ROOT ||
+    (typeof process.cwd === "function" && process.cwd().startsWith("/var/task"))
+  );
+}
+
 export function getDb(): DatabaseSync {
   if (dbInstance) return dbInstance;
 
-  let dataDir = path.join(process.cwd(), "data");
-  let dbPath = path.join(dataDir, "platform.db");
-
-  try {
-    if (!fs.existsSync(dataDir)) {
-      fs.mkdirSync(dataDir, { recursive: true });
-    }
-  } catch (err: any) {
-    // Handle read-only serverless environments (e.g. AWS Lambda / Vercel)
-    if (err?.code === "EROFS" || err?.message?.includes("read-only")) {
-      dataDir = path.join(os.tmpdir(), "platform-data");
-      dbPath = path.join(dataDir, "platform.db");
-      if (!fs.existsSync(dataDir)) {
-        fs.mkdirSync(dataDir, { recursive: true });
-      }
-    } else {
-      throw err;
-    }
-  }
-
+  const serverless = isServerlessEnvironment();
   let db: DatabaseSync;
-  try {
-    db = new DatabaseSync(dbPath);
-  } catch (err: any) {
-    if (err?.code === "EROFS" || err?.message?.includes("read-only")) {
-      dataDir = path.join(os.tmpdir(), "platform-data");
-      dbPath = path.join(dataDir, "platform.db");
+
+  if (serverless) {
+    // In Vercel serverless / AWS Lambda, /var/task is an immutable bundle root.
+    // Never attempt to create or access process.cwd()/data.
+    try {
+      const dataDir = path.join(os.tmpdir(), "platform-data");
       if (!fs.existsSync(dataDir)) {
         fs.mkdirSync(dataDir, { recursive: true });
       }
-      db = new DatabaseSync(dbPath);
-    } else {
-      throw err;
+      db = new DatabaseSync(path.join(dataDir, "platform.db"));
+    } catch {
+      // Ephemeral in-memory fallback if /tmp is constrained
+      db = new DatabaseSync(":memory:");
+    }
+  } else {
+    // Local development and test runners
+    let testDb: DatabaseSync | null = null;
+    try {
+      const dataDir = path.join(process.cwd(), "data");
+      if (!fs.existsSync(dataDir)) {
+        fs.mkdirSync(dataDir, { recursive: true });
+      }
+      const dbPath = path.join(dataDir, "platform.db");
+      testDb = new DatabaseSync(dbPath);
+      // Verify SQLite write and locking capability on this filesystem
+      testDb.exec("CREATE TABLE IF NOT EXISTS _sqlite_write_test (id INTEGER PRIMARY KEY);");
+      db = testDb;
+    } catch {
+      if (testDb) {
+        try {
+          testDb.close();
+        } catch {
+          // Ignore close error
+        }
+      }
+      // If the current drive/filesystem doesn't permit SQLite locking (e.g. read-only, network/subst drive),
+      // fall back to os.tmpdir() or in-memory.
+      try {
+        const fallbackDir = path.join(os.tmpdir(), "platform-data");
+        if (!fs.existsSync(fallbackDir)) {
+          fs.mkdirSync(fallbackDir, { recursive: true });
+        }
+        db = new DatabaseSync(path.join(fallbackDir, "platform.db"));
+      } catch {
+        db = new DatabaseSync(":memory:");
+      }
     }
   }
 
-  // Enable foreign keys and WAL mode if applicable
-  db.exec("PRAGMA foreign_keys = ON;");
-
-  initSchema(db);
+  try {
+    // Enable foreign keys
+    db.exec("PRAGMA foreign_keys = ON;");
+    initSchema(db);
+    try {
+      db.exec("ALTER TABLE user_preferences ADD COLUMN country TEXT DEFAULT 'US';");
+    } catch {
+      // Column may already exist
+    }
+  } catch (err) {
+    console.warn("SQLite schema initialization warning:", err);
+  }
 
   dbInstance = db;
   return dbInstance;
@@ -108,6 +140,7 @@ function initSchema(db: DatabaseSync) {
       default_mode TEXT DEFAULT 'normal', -- 'normal' or 'category'
       preferred_categories TEXT DEFAULT '[]', -- JSON array
       preferred_languages TEXT DEFAULT '["en"]', -- JSON array
+      country TEXT DEFAULT 'US',
       theme TEXT DEFAULT 'system', -- 'dark', 'light', 'system'
       layout_density TEXT DEFAULT 'comfortable', -- 'comfortable' or 'compact'
       reduced_motion INTEGER DEFAULT 0,

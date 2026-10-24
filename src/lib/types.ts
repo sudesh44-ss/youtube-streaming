@@ -156,6 +156,7 @@ export interface NormalizedContentItem {
   language?: string;
   publicationDate?: string;
   creator?: string; // channel name, director, or artist
+  channelId?: string; // YouTube channelId or provider creator ID
   externalUrl: string;
   playbackMethod: "iframe_embed" | "preview_audio" | "external_link";
   embedUrl?: string;
@@ -195,6 +196,8 @@ export interface UserSession {
     defaultMode: BrowsingMode;
     preferredCategories: string[];
     preferredLanguages: string[];
+    country?: string;
+    language?: "en" | "hi";
     theme: "light" | "dark" | "system";
     layoutDensity: "comfortable" | "compact";
     reducedMotion: boolean;
@@ -226,6 +229,8 @@ export interface SearchFilters {
   subcategory?: string;
   mode: BrowsingMode;
   language?: string;
+  relevanceLanguage?: string;
+  regionCode?: string;
   contentType?: string;
   videoType?: "all" | "shorts" | "videos";
   sortBy?: "relevance" | "date" | "title";

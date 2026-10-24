@@ -37,6 +37,19 @@ export async function POST(req: NextRequest) {
 
     await updateUserProfile(session.user.id, updatedName);
 
+    // Also update Supabase auth metadata if admin client is configured
+    try {
+      const { createAdminClient } = await import("@/lib/supabase/admin");
+      const admin = createAdminClient();
+      if (admin) {
+        await admin.auth.admin.updateUserById(session.user.id, {
+          user_metadata: { name: updatedName, full_name: updatedName },
+        });
+      }
+    } catch {
+      // Non-blocking fallback
+    }
+
     return NextResponse.json({ success: true, name: updatedName });
   } catch (err) {
     console.error("Profile update error:", err);

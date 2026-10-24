@@ -21,7 +21,7 @@ export function getFallbackPalette(isDark: boolean): DynamicPalette {
       primaryHover: "#0ea5e9",
       secondary: "#818cf8",
       bgGlow: "rgba(56, 189, 248, 0.12)",
-      bgGradient: "radial-gradient(ellipse 80% 50% at 50% -10%, rgba(56, 189, 248, 0.15) 0%, rgba(9, 13, 22, 0) 80%)",
+      bgGradient: "radial-gradient(ellipse 80% 50% at 50% -10%, rgba(56, 189, 248, 0.15) 0%, rgba(17, 18, 18, 0) 80%)",
       playButtonBg: "linear-gradient(135deg, #38bdf8, #2563eb)",
       playButtonGlow: "0 0 35px rgba(56, 189, 248, 0.5)",
       badgeBg: "rgba(56, 189, 248, 0.15)",
@@ -113,7 +113,7 @@ function generateCoordinatedPalette(rgb: [number, number, number], isDark: boole
   const adjustedS = Math.max(0.45, Math.min(s, 0.85));
 
   // Contrast-aware lightness adjustment
-  // For dark mode: lightness between 0.55 and 0.65 ensures vibrant visibility against #090d16
+  // For dark mode: lightness between 0.55 and 0.65 ensures vibrant visibility against #111212
   // For light mode: lightness between 0.35 and 0.45 ensures legible contrast against #ffffff
   const primaryL = isDark ? 0.60 : 0.40;
   const hoverL = isDark ? 0.68 : 0.32;
@@ -135,7 +135,7 @@ function generateCoordinatedPalette(rgb: [number, number, number], isDark: boole
   const glowAlpha = isDark ? 0.16 : 0.10;
   const bgGlow = `rgba(${pr}, ${pg}, ${pb}, ${glowAlpha})`;
   const bgGradient = isDark
-    ? `radial-gradient(ellipse 80% 50% at 50% -10%, rgba(${pr}, ${pg}, ${pb}, 0.20) 0%, rgba(9, 13, 22, 0) 80%)`
+    ? `radial-gradient(ellipse 80% 50% at 50% -10%, rgba(${pr}, ${pg}, ${pb}, 0.20) 0%, rgba(17, 18, 18, 0) 80%)`
     : `radial-gradient(ellipse 80% 50% at 50% -10%, rgba(${pr}, ${pg}, ${pb}, 0.12) 0%, rgba(255, 255, 255, 0) 80%)`;
 
   const playButtonBg = `linear-gradient(135deg, ${primary}, ${secondary})`;

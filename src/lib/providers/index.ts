@@ -4,7 +4,7 @@ import { TMDBAdapter } from "./tmdb";
 import { NormalizedContentItem, SearchFilters, ProviderStatus, CATEGORIES } from "../types";
 import { getDb } from "../db";
 import { decryptSecret } from "../crypto";
-import { getUserProviderKeyAsync, getProviderStatusListAsync, DEFAULT_PROVIDERS } from "../data-service";
+import { getUserProviderKeyAsync, getProviderStatusListAsync, DEFAULT_PROVIDERS, getUserSavedItemIdsAsync } from "../data-service";
 
 export { getUserProviderKeyAsync, getProviderStatusListAsync };
 
@@ -160,14 +160,13 @@ export async function queryUnifiedContentWithPagination(
 
   // Check saved state if userId provided
   if (userId) {
-    const db = getDb();
-    const savedRows = db.prepare(`
-      SELECT provider, content_id FROM saved_content WHERE user_id = ?
-    `).all(userId) as any[];
-
-    const savedSet = new Set(savedRows.map((r) => `${r.provider}:${r.content_id}`));
-    for (const item of combined) {
-      item.saved = savedSet.has(item.id);
+    try {
+      const savedSet = await getUserSavedItemIdsAsync(userId);
+      for (const item of combined) {
+        item.saved = savedSet.has(item.id);
+      }
+    } catch {
+      // Non-fatal saved indicator check
     }
   }
 
