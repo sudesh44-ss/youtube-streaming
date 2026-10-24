@@ -169,6 +169,8 @@ export interface NormalizedContentItem {
   progressPercent?: number; // 0 - 100 for Continue Watching progress bar
   channelAvatar?: string; // avatar image url
   isShort?: boolean; // YouTube Short flag
+  recommendationReasons?: string[]; // Explainability reasons (e.g. "From your frequently watched creator")
+  recommendationScoreBreakdown?: Record<string, number>; // Breakdown of scoring signals
 }
 
 export interface ProviderStatus {

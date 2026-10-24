@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Link from "next/link";
 import {
   BarChart3,
@@ -15,6 +15,7 @@ import {
   Layers,
   Database,
   ShieldCheck,
+  CheckCircle2,
 } from "lucide-react";
 
 import {
@@ -39,6 +40,31 @@ import { ManageRecommendationsSection } from "@/components/insights/ManageRecomm
 export default function InsightsPage() {
   const [selectedPeriod, setSelectedPeriod] = useState<WatchTimePeriod>("last7days");
   const [isEmptyPreview, setIsEmptyPreview] = useState<boolean>(false);
+  const [realInsights, setRealInsights] = useState<any>(null);
+  const [isLoading, setIsLoading] = useState<boolean>(true);
+
+  useEffect(() => {
+    fetch("/api/user/insights")
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (data && data.authenticated) {
+          setRealInsights(data);
+          if (data.isColdStart) {
+            setIsEmptyPreview(true);
+          }
+        }
+      })
+      .catch(() => {})
+      .finally(() => setIsLoading(false));
+  }, []);
+
+  const isLive = Boolean(realInsights && realInsights.authenticated && !realInsights.isColdStart);
+  const periods = realInsights?.watchTimePeriods || DEMO_WATCH_TIME_PERIODS;
+  const monthly = realInsights?.monthlyWatchTime || DEMO_MONTHLY_WATCH_TIME;
+  const interests = realInsights?.interests?.length > 0 ? realInsights.interests : DEMO_INTERESTS;
+  const activity = realInsights?.watchActivity?.length > 0 ? realInsights.watchActivity : DEMO_WATCH_ACTIVITY;
+  const trends = realInsights?.searchTrends?.length > 0 ? realInsights.searchTrends : DEMO_SEARCH_TRENDS;
+  const whyItems = realInsights?.whyThisVideoItems?.length > 0 ? realInsights.whyThisVideoItems : DEMO_WHY_THIS_VIDEO_ITEMS;
 
   return (
     <div className="container insights-page-container">
@@ -58,47 +84,87 @@ export default function InsightsPage() {
               <span>Your Insights</span>
             </h1>
             <p className="insights-main-subtitle">
-              Simulated overview of watch time, interest affinities, viewing activity, and explainable recommendations.
+              {isLive
+                ? "Live overview of your actual watch time, category affinities, and transparent recommendation signals."
+                : "Simulated overview of watch time, interest affinities, viewing activity, and explainable recommendations."}
             </p>
           </div>
         </div>
       </div>
 
-      {/* Prominent Demo Notice Banner */}
-      <div className="global-demo-banner">
-        <div className="demo-banner-top">
-          <div className="demo-badge-row">
-            <span className="demo-pill-badge">DEMO DATA ONLY</span>
-            <span className="demo-scope-text">Simulated Intelligence Preview</span>
+      {/* Status Notice Banner */}
+      {isLive ? (
+        <div className="global-live-banner">
+          <div className="demo-banner-top">
+            <div className="demo-badge-row">
+              <span className="live-pill-badge">REAL ACTIVITY DATA</span>
+              <span className="demo-scope-text">Personalized Viewing Intelligence</span>
+            </div>
+          </div>
+          <p className="demo-banner-desc">
+            Viewing metrics, category affinities, and recommendations are generated from your actual viewing and search behavior. Raw activity records are securely purged after 30 days while your learned recommendation profile retains persistent affinities.
+          </p>
+
+          {/* Section Quick Links */}
+          <div className="quick-links-strip">
+            <span className="quick-links-label">Quick Jump:</span>
+            <a href="#section-watch-time" className="quick-link">Watch Time</a>
+            <span className="quick-sep">•</span>
+            <a href="#section-monthly" className="quick-link">Monthly</a>
+            <span className="quick-sep">•</span>
+            <a href="#section-interests" className="quick-link">Interests</a>
+            <span className="quick-sep">•</span>
+            <a href="#section-activity" className="quick-link">Activity</a>
+            <span className="quick-sep">•</span>
+            <a href="#section-search" className="quick-link">Search Trends</a>
+            <span className="quick-sep">•</span>
+            <a href="#section-why" className="quick-link">Why This Video?</a>
+            <span className="quick-sep">•</span>
+            <a href="#section-manage" className="quick-link">Manage</a>
           </div>
         </div>
-        <p className="demo-banner-desc">
-          This section demonstrates the upcoming analytics and explainability architecture for OmniDiscover. All metrics, watch hours, interest scores, and search trends displayed below use <strong>modular sample data</strong>. No personal Google or YouTube activity records have been queried or fabricated.
-        </p>
+      ) : (
+        <div className="global-demo-banner">
+          <div className="demo-banner-top">
+            <div className="demo-badge-row">
+              <span className="demo-pill-badge">
+                {realInsights?.isColdStart ? "COLD START PREVIEW" : "DEMO DATA ONLY"}
+              </span>
+              <span className="demo-scope-text">
+                {realInsights?.isColdStart ? "No Viewing History Recorded Yet" : "Simulated Intelligence Preview"}
+              </span>
+            </div>
+          </div>
+          <p className="demo-banner-desc">
+            {realInsights?.isColdStart
+              ? "You haven't watched any videos or saved searches yet. Below is a sample preview of how your viewing analytics and explainable recommendations will appear once you begin exploring content."
+              : "This section demonstrates the analytics and explainability architecture for OmniDiscover using modular sample data. Log in and watch videos to activate real personalized intelligence."}
+          </p>
 
-        {/* Section Quick Links */}
-        <div className="quick-links-strip">
-          <span className="quick-links-label">Quick Jump:</span>
-          <a href="#section-watch-time" className="quick-link">Watch Time</a>
-          <span className="quick-sep">•</span>
-          <a href="#section-monthly" className="quick-link">Monthly</a>
-          <span className="quick-sep">•</span>
-          <a href="#section-interests" className="quick-link">Interests</a>
-          <span className="quick-sep">•</span>
-          <a href="#section-activity" className="quick-link">Activity</a>
-          <span className="quick-sep">•</span>
-          <a href="#section-search" className="quick-link">Search Trends</a>
-          <span className="quick-sep">•</span>
-          <a href="#section-why" className="quick-link">Why This Video?</a>
-          <span className="quick-sep">•</span>
-          <a href="#section-manage" className="quick-link">Manage</a>
+          {/* Section Quick Links */}
+          <div className="quick-links-strip">
+            <span className="quick-links-label">Quick Jump:</span>
+            <a href="#section-watch-time" className="quick-link">Watch Time</a>
+            <span className="quick-sep">•</span>
+            <a href="#section-monthly" className="quick-link">Monthly</a>
+            <span className="quick-sep">•</span>
+            <a href="#section-interests" className="quick-link">Interests</a>
+            <span className="quick-sep">•</span>
+            <a href="#section-activity" className="quick-link">Activity</a>
+            <span className="quick-sep">•</span>
+            <a href="#section-search" className="quick-link">Search Trends</a>
+            <span className="quick-sep">•</span>
+            <a href="#section-why" className="quick-link">Why This Video?</a>
+            <span className="quick-sep">•</span>
+            <a href="#section-manage" className="quick-link">Manage</a>
+          </div>
         </div>
-      </div>
+      )}
 
       {/* SECTION A: Watch Time Dashboard */}
       <section id="section-watch-time" aria-labelledby="heading-watch-time">
         <WatchTimeDashboard
-          periods={DEMO_WATCH_TIME_PERIODS}
+          periods={periods}
           selectedPeriod={selectedPeriod}
           onPeriodChange={(period) => setSelectedPeriod(period)}
           isEmptyPreview={isEmptyPreview}
@@ -108,27 +174,27 @@ export default function InsightsPage() {
 
       {/* SECTION B: Monthly Watch Time */}
       <section id="section-monthly" aria-labelledby="heading-monthly">
-        <MonthlyWatchTimeCard summary={DEMO_MONTHLY_WATCH_TIME} />
+        <MonthlyWatchTimeCard summary={monthly} />
       </section>
 
       {/* SECTION C: Your Interests */}
       <section id="section-interests" aria-labelledby="heading-interests">
-        <InterestScoresSection interests={DEMO_INTERESTS} />
+        <InterestScoresSection interests={interests} />
       </section>
 
       {/* SECTION D: Your Watch Activity */}
       <section id="section-activity" aria-labelledby="heading-activity">
-        <WatchActivitySection activity={DEMO_WATCH_ACTIVITY} />
+        <WatchActivitySection activity={activity} />
       </section>
 
       {/* SECTION E: Your Search Trends */}
       <section id="section-search" aria-labelledby="heading-search">
-        <SearchTrendsSection trends={DEMO_SEARCH_TRENDS} />
+        <SearchTrendsSection trends={trends} />
       </section>
 
       {/* SECTION F: Why This Video? */}
       <section id="section-why" aria-labelledby="heading-why">
-        <WhyThisVideoSection items={DEMO_WHY_THIS_VIDEO_ITEMS} />
+        <WhyThisVideoSection items={whyItems} />
       </section>
 
       {/* SECTION G: Manage Recommendations */}
@@ -255,6 +321,27 @@ export default function InsightsPage() {
 
         .demo-pill-badge {
           background: linear-gradient(135deg, var(--primary), #2563eb);
+          color: #ffffff;
+          font-size: 0.6875rem;
+          font-weight: 800;
+          letter-spacing: 0.05em;
+          padding: 0.2rem 0.625rem;
+          border-radius: var(--radius-full);
+          text-transform: uppercase;
+        }
+
+        .global-live-banner {
+          background-color: var(--bg-surface);
+          border: 1px solid rgba(16, 185, 129, 0.35);
+          border-left: 4px solid #10b981;
+          border-radius: var(--radius-lg);
+          padding: 1.25rem 1.5rem;
+          margin-bottom: 2.5rem;
+          box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
+        }
+
+        .live-pill-badge {
+          background: linear-gradient(135deg, #10b981, #059669);
           color: #ffffff;
           font-size: 0.6875rem;
           font-weight: 800;

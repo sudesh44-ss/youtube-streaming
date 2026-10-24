@@ -46,7 +46,7 @@ export const DEFAULT_PROVIDERS: ProviderStatus[] = [
  * Prefers admin client when SUPABASE_SERVICE_ROLE_KEY is available (e.g. background operations),
  * otherwise bridges using cookie-based createServerSupabaseClient.
  */
-async function getSupabase() {
+export async function getSupabase() {
   if (!isSupabaseServerConfigured()) return null;
 
   if (process.env.SUPABASE_SERVICE_ROLE_KEY) {
@@ -427,6 +427,15 @@ export async function saveWatchProgressForUser(
     // Graceful
   }
 
+  // Incrementally update persistent recommendation profile
+  updateRecommendationProfileFromActivityAsync(userId, {
+    type: "watch",
+    channelName: item.channelName,
+    contentId: item.contentId,
+    watchSeconds: progress,
+    completed,
+  }).catch(() => {});
+
   return { success: true, percent };
 }
 
@@ -531,6 +540,13 @@ export async function recordSearchHistory(
   } catch {
     // Safe fallback
   }
+
+  // Incrementally update persistent recommendation profile with search interest
+  updateRecommendationProfileFromActivityAsync(userId, {
+    type: "search",
+    query,
+    category: category || undefined,
+  }).catch(() => {});
 }
 
 // ==========================================
@@ -930,6 +946,16 @@ export async function getUserRecommendationSignalsAsync(
           .map((f: any) => f.content_id);
       }
 
+      // Merge persistent learned recommendation profile to preserve affinities across 30-day purge
+      const persistentProfile = await getUserRecommendationProfileAsync(userId);
+      mergePersistentProfileIntoSignals(persistentProfile, {
+        savedCategoryCounts,
+        topWatchedCreators,
+        recentSearchKeywords,
+        negativeContentIds,
+        likedContentIds,
+      });
+
       return {
         preferredCategories,
         savedCategoryCounts,
@@ -1008,6 +1034,16 @@ export async function getUserRecommendationSignalsAsync(
     // Non-fatal
   }
 
+  // Merge persistent learned recommendation profile to preserve affinities across 30-day purge
+  const persistentProfile = await getUserRecommendationProfileAsync(userId);
+  mergePersistentProfileIntoSignals(persistentProfile, {
+    savedCategoryCounts,
+    topWatchedCreators,
+    recentSearchKeywords,
+    negativeContentIds,
+    likedContentIds,
+  });
+
   return {
     preferredCategories,
     savedCategoryCounts,
@@ -1070,6 +1106,69 @@ export interface OAuthConnectionRecord {
   expiresAt?: number;
 }
 
+async function refreshGoogleAccessToken(
+  userId: string,
+  provider: string,
+  encryptedRefreshToken: string,
+  refreshIv: string,
+  refreshAuthTag: string,
+  channelId?: string | null,
+  channelTitle?: string | null,
+  scope?: string | null
+): Promise<string | null> {
+  try {
+    const refreshToken = decryptSecret(encryptedRefreshToken, refreshIv, refreshAuthTag);
+    const clientId = process.env.GOOGLE_CLIENT_ID || process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID;
+    const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
+
+    if (!clientId || !clientSecret || !refreshToken) {
+      return null;
+    }
+
+    const res = await fetch("https://oauth2.googleapis.com/token", {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({
+        client_id: clientId,
+        client_secret: clientSecret,
+        refresh_token: refreshToken,
+        grant_type: "refresh_token",
+      }),
+    });
+
+    if (!res.ok) {
+      console.warn("Failed to refresh Google OAuth token:", await res.text().catch(() => ""));
+      return null;
+    }
+
+    const data = await res.json();
+    if (data.access_token) {
+      const expiresAt = Date.now() + (Number(data.expires_in) || 3600) * 1000;
+      const { ciphertext: encAcc, iv: accIv, authTag: accTag } = encryptSecret(data.access_token);
+
+      await saveOAuthConnectionAsync({
+        userId,
+        provider,
+        encryptedAccessToken: encAcc,
+        iv: accIv,
+        authTag: accTag,
+        encryptedRefreshToken,
+        refreshIv,
+        refreshAuthTag,
+        expiresAt,
+        scope: data.scope || scope,
+        channelId,
+        channelTitle,
+      });
+
+      return data.access_token;
+    }
+  } catch (err) {
+    console.warn("refreshGoogleAccessToken error:", err);
+  }
+  return null;
+}
+
 export async function getOAuthConnectionAsync(
   userId: string,
   provider: string = "youtube"
@@ -1079,14 +1178,38 @@ export async function getOAuthConnectionAsync(
     try {
       const { data, error } = await supabase
         .from("oauth_connections")
-        .select("channel_title, updated_at, encrypted_access_token, iv, auth_tag, expires_at")
+        .select("channel_title, updated_at, encrypted_access_token, iv, auth_tag, expires_at, encrypted_refresh_token, refresh_iv, refresh_auth_tag, scope, channel_id")
         .eq("user_id", userId)
         .eq("provider", provider)
         .maybeSingle();
 
       if (!error && data) {
         let accessToken: string | undefined = undefined;
-        if (data.encrypted_access_token && data.iv && data.auth_tag) {
+
+        // Auto-refresh token if expired or expiring within 60s
+        if (
+          data.expires_at &&
+          data.expires_at <= Date.now() + 60000 &&
+          data.encrypted_refresh_token &&
+          data.refresh_iv &&
+          data.refresh_auth_tag
+        ) {
+          const refreshed = await refreshGoogleAccessToken(
+            userId,
+            provider,
+            data.encrypted_refresh_token,
+            data.refresh_iv,
+            data.refresh_auth_tag,
+            data.channel_id,
+            data.channel_title,
+            data.scope
+          );
+          if (refreshed) {
+            accessToken = refreshed;
+          }
+        }
+
+        if (!accessToken && data.encrypted_access_token && data.iv && data.auth_tag) {
           try {
             accessToken = decryptSecret(data.encrypted_access_token, data.iv, data.auth_tag);
           } catch {
@@ -1109,13 +1232,37 @@ export async function getOAuthConnectionAsync(
     const db = getDb();
     const row = db
       .prepare(
-        "SELECT channel_title, updated_at, encrypted_access_token, iv, auth_tag, expires_at FROM oauth_connections WHERE user_id = ? AND provider = ?"
+        "SELECT channel_title, updated_at, encrypted_access_token, iv, auth_tag, expires_at, encrypted_refresh_token, refresh_iv, refresh_auth_tag, scope, channel_id FROM oauth_connections WHERE user_id = ? AND provider = ?"
       )
       .get(userId, provider) as any;
 
     if (row) {
       let accessToken: string | undefined = undefined;
-      if (row.encrypted_access_token && row.iv && row.auth_tag) {
+
+      // Auto-refresh token if expired or expiring within 60s
+      if (
+        row.expires_at &&
+        row.expires_at <= Date.now() + 60000 &&
+        row.encrypted_refresh_token &&
+        row.refresh_iv &&
+        row.refresh_auth_tag
+      ) {
+        const refreshed = await refreshGoogleAccessToken(
+          userId,
+          provider,
+          row.encrypted_refresh_token,
+          row.refresh_iv,
+          row.refresh_auth_tag,
+          row.channel_id,
+          row.channel_title,
+          row.scope
+        );
+        if (refreshed) {
+          accessToken = refreshed;
+        }
+      }
+
+      if (!accessToken && row.encrypted_access_token && row.iv && row.auth_tag) {
         try {
           accessToken = decryptSecret(row.encrypted_access_token, row.iv, row.auth_tag);
         } catch {
@@ -1303,6 +1450,12 @@ export async function recordContentFeedbackAsync(
   } catch {
     // Non-fatal
   }
+
+  // Incrementally update persistent recommendation profile with explicit feedback
+  updateRecommendationProfileFromActivityAsync(userId, {
+    type: feedbackType === "like" ? "like" : "not_interested",
+    contentId,
+  }).catch(() => {});
 }
 
 export async function getContentFeedbackAsync(
@@ -1338,4 +1491,300 @@ export async function getContentFeedbackAsync(
     return [];
   }
 }
+
+// ==========================================
+// 11. PERSISTENT RECOMMENDATION PROFILES
+// ==========================================
+
+export interface UserRecommendationProfile {
+  userId: string;
+  categoryAffinities: Record<string, number>;
+  creatorAffinities: Record<string, number>;
+  searchTopics: string[];
+  negativeContentIds: string[];
+  likedContentIds: string[];
+  totalCompletedWatches: number;
+  totalWatchSeconds: number;
+  profileVersion: number;
+  updatedAt: number;
+}
+
+export async function getUserRecommendationProfileAsync(
+  userId: string
+): Promise<UserRecommendationProfile | null> {
+  const supabase = await getSupabase();
+  if (supabase && isUuid(userId)) {
+    try {
+      const { data, error } = await supabase
+        .from("user_recommendation_profiles")
+        .select("*")
+        .eq("user_id", userId)
+        .maybeSingle();
+
+      if (!error && data) {
+        return {
+          userId: data.user_id,
+          categoryAffinities:
+            typeof data.category_affinities === "string"
+              ? JSON.parse(data.category_affinities)
+              : data.category_affinities || {},
+          creatorAffinities:
+            typeof data.creator_affinities === "string"
+              ? JSON.parse(data.creator_affinities)
+              : data.creator_affinities || {},
+          searchTopics:
+            typeof data.search_topics === "string"
+              ? JSON.parse(data.search_topics)
+              : data.search_topics || [],
+          negativeContentIds:
+            typeof data.negative_content_ids === "string"
+              ? JSON.parse(data.negative_content_ids)
+              : data.negative_content_ids || [],
+          likedContentIds:
+            typeof data.liked_content_ids === "string"
+              ? JSON.parse(data.liked_content_ids)
+              : data.liked_content_ids || [],
+          totalCompletedWatches: Number(data.total_completed_watches) || 0,
+          totalWatchSeconds: Number(data.total_watch_seconds) || 0,
+          profileVersion: Number(data.profile_version) || 1,
+          updatedAt:
+            typeof data.updated_at === "string"
+              ? new Date(data.updated_at).getTime()
+              : Number(data.updated_at) || Date.now(),
+        };
+      }
+    } catch (err) {
+      console.warn("Supabase getUserRecommendationProfile warning:", err);
+    }
+  }
+
+  try {
+    const db = getDb();
+    const row = db
+      .prepare("SELECT * FROM user_recommendation_profiles WHERE user_id = ?")
+      .get(userId) as any;
+    if (row) {
+      return {
+        userId: row.user_id,
+        categoryAffinities: row.category_affinities ? JSON.parse(row.category_affinities) : {},
+        creatorAffinities: row.creator_affinities ? JSON.parse(row.creator_affinities) : {},
+        searchTopics: row.search_topics ? JSON.parse(row.search_topics) : [],
+        negativeContentIds: row.negative_content_ids ? JSON.parse(row.negative_content_ids) : [],
+        likedContentIds: row.liked_content_ids ? JSON.parse(row.liked_content_ids) : [],
+        totalCompletedWatches: Number(row.total_completed_watches) || 0,
+        totalWatchSeconds: Number(row.total_watch_seconds) || 0,
+        profileVersion: Number(row.profile_version) || 1,
+        updatedAt: Number(row.updated_at) || Date.now(),
+      };
+    }
+  } catch {
+    // Non-fatal fallback
+  }
+
+  return null;
+}
+
+export async function saveUserRecommendationProfileAsync(
+  userId: string,
+  profile: Partial<UserRecommendationProfile>
+): Promise<void> {
+  const now = Date.now();
+  const isoNow = new Date(now).toISOString();
+
+  const supabase = await getSupabase();
+  if (supabase && isUuid(userId)) {
+    try {
+      await supabase.from("user_recommendation_profiles").upsert(
+        {
+          user_id: userId,
+          category_affinities: profile.categoryAffinities ?? {},
+          creator_affinities: profile.creatorAffinities ?? {},
+          search_topics: profile.searchTopics ?? [],
+          negative_content_ids: profile.negativeContentIds ?? [],
+          liked_content_ids: profile.likedContentIds ?? [],
+          total_completed_watches: profile.totalCompletedWatches ?? 0,
+          total_watch_seconds: profile.totalWatchSeconds ?? 0,
+          profile_version: profile.profileVersion ?? 1,
+          updated_at: isoNow,
+        },
+        { onConflict: "user_id" }
+      );
+    } catch (err) {
+      console.warn("Supabase saveUserRecommendationProfile warning:", err);
+    }
+  }
+
+  try {
+    const db = getDb();
+    db.prepare(`
+      INSERT INTO user_recommendation_profiles (
+        user_id, category_affinities, creator_affinities, search_topics,
+        negative_content_ids, liked_content_ids, total_completed_watches,
+        total_watch_seconds, profile_version, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(user_id) DO UPDATE SET
+        category_affinities = excluded.category_affinities,
+        creator_affinities = excluded.creator_affinities,
+        search_topics = excluded.search_topics,
+        negative_content_ids = excluded.negative_content_ids,
+        liked_content_ids = excluded.liked_content_ids,
+        total_completed_watches = excluded.total_completed_watches,
+        total_watch_seconds = excluded.total_watch_seconds,
+        profile_version = excluded.profile_version,
+        updated_at = excluded.updated_at
+    `).run(
+      userId,
+      JSON.stringify(profile.categoryAffinities ?? {}),
+      JSON.stringify(profile.creatorAffinities ?? {}),
+      JSON.stringify(profile.searchTopics ?? []),
+      JSON.stringify(profile.negativeContentIds ?? []),
+      JSON.stringify(profile.likedContentIds ?? []),
+      profile.totalCompletedWatches ?? 0,
+      profile.totalWatchSeconds ?? 0,
+      profile.profileVersion ?? 1,
+      now
+    );
+  } catch (err) {
+    console.warn("SQLite saveUserRecommendationProfile warning:", err);
+  }
+}
+
+export async function resetUserRecommendationProfileAsync(userId: string): Promise<void> {
+  const supabase = await getSupabase();
+  if (supabase && isUuid(userId)) {
+    try {
+      await supabase.from("user_recommendation_profiles").delete().eq("user_id", userId);
+    } catch (err) {
+      console.warn("Supabase resetUserRecommendationProfile warning:", err);
+    }
+  }
+
+  try {
+    const db = getDb();
+    db.prepare("DELETE FROM user_recommendation_profiles WHERE user_id = ?").run(userId);
+  } catch {
+    // Non-fatal
+  }
+}
+
+export async function updateRecommendationProfileFromActivityAsync(
+  userId: string,
+  event: {
+    type: "watch" | "search" | "like" | "not_interested";
+    category?: string;
+    channelName?: string;
+    contentId?: string;
+    query?: string;
+    watchSeconds?: number;
+    completed?: boolean;
+  }
+): Promise<void> {
+  try {
+    const current = (await getUserRecommendationProfileAsync(userId)) || {
+      userId,
+      categoryAffinities: {},
+      creatorAffinities: {},
+      searchTopics: [],
+      negativeContentIds: [],
+      likedContentIds: [],
+      totalCompletedWatches: 0,
+      totalWatchSeconds: 0,
+      profileVersion: 1,
+      updatedAt: Date.now(),
+    };
+
+    if (event.type === "watch") {
+      if (event.watchSeconds) {
+        current.totalWatchSeconds += Math.max(0, Math.round(event.watchSeconds));
+      }
+      if (event.completed) {
+        current.totalCompletedWatches += 1;
+      }
+      if (event.category) {
+        const cat = event.category.toLowerCase();
+        const delta = event.completed ? 0.2 : 0.05;
+        current.categoryAffinities[cat] = Math.min(1.0, (current.categoryAffinities[cat] || 0) + delta);
+      }
+      if (event.channelName) {
+        const ch = event.channelName.trim();
+        if (ch) {
+          const delta = event.completed ? 0.25 : 0.1;
+          current.creatorAffinities[ch] = Math.min(1.0, (current.creatorAffinities[ch] || 0) + delta);
+        }
+      }
+    } else if (event.type === "search" && event.query) {
+      const q = event.query.trim().toLowerCase();
+      if (q.length >= 2 && !current.searchTopics.includes(q)) {
+        current.searchTopics.unshift(q);
+        if (current.searchTopics.length > 25) {
+          current.searchTopics = current.searchTopics.slice(0, 25);
+        }
+      }
+      if (event.category) {
+        const cat = event.category.toLowerCase();
+        current.categoryAffinities[cat] = Math.min(1.0, (current.categoryAffinities[cat] || 0) + 0.1);
+      }
+    } else if (event.type === "like" && event.contentId) {
+      if (!current.likedContentIds.includes(event.contentId)) {
+        current.likedContentIds.push(event.contentId);
+      }
+      current.negativeContentIds = current.negativeContentIds.filter((id) => id !== event.contentId);
+      if (event.category) {
+        const cat = event.category.toLowerCase();
+        current.categoryAffinities[cat] = Math.min(1.0, (current.categoryAffinities[cat] || 0) + 0.15);
+      }
+    } else if (event.type === "not_interested" && event.contentId) {
+      if (!current.negativeContentIds.includes(event.contentId)) {
+        current.negativeContentIds.push(event.contentId);
+      }
+      current.likedContentIds = current.likedContentIds.filter((id) => id !== event.contentId);
+    }
+
+    current.updatedAt = Date.now();
+    await saveUserRecommendationProfileAsync(userId, current);
+  } catch (err) {
+    console.warn("updateRecommendationProfileFromActivityAsync error:", err);
+  }
+}
+
+export function mergePersistentProfileIntoSignals(
+  persistent: UserRecommendationProfile | null,
+  signals: {
+    savedCategoryCounts: Record<string, number>;
+    topWatchedCreators: Record<string, number>;
+    recentSearchKeywords: string[];
+    negativeContentIds: string[];
+    likedContentIds: string[];
+  }
+) {
+  if (!persistent) return;
+
+  for (const [cat, affinity] of Object.entries(persistent.categoryAffinities || {})) {
+    const cNorm = cat.toLowerCase();
+    signals.savedCategoryCounts[cNorm] = (signals.savedCategoryCounts[cNorm] || 0) + Math.round(affinity * 10);
+  }
+
+  for (const [creator, affinity] of Object.entries(persistent.creatorAffinities || {})) {
+    signals.topWatchedCreators[creator] = (signals.topWatchedCreators[creator] || 0) + Math.round(affinity * 5);
+  }
+
+  for (const topic of persistent.searchTopics || []) {
+    if (!signals.recentSearchKeywords.includes(topic.toLowerCase())) {
+      signals.recentSearchKeywords.push(topic.toLowerCase());
+    }
+  }
+
+  for (const negId of persistent.negativeContentIds || []) {
+    if (!signals.negativeContentIds.includes(negId)) {
+      signals.negativeContentIds.push(negId);
+    }
+  }
+
+  for (const likeId of persistent.likedContentIds || []) {
+    if (!signals.likedContentIds.includes(likeId)) {
+      signals.likedContentIds.push(likeId);
+    }
+  }
+}
+
 

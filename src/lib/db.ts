@@ -279,5 +279,22 @@ function initSchema(db: DatabaseSync) {
 
     CREATE INDEX IF NOT EXISTS idx_content_feedback_user ON content_feedback(user_id);
     CREATE INDEX IF NOT EXISTS idx_content_feedback_user_type ON content_feedback(user_id, feedback_type);
+
+    -- Persistent Learned Recommendation Profiles
+    CREATE TABLE IF NOT EXISTS user_recommendation_profiles (
+      user_id TEXT PRIMARY KEY,
+      category_affinities TEXT NOT NULL DEFAULT '{}', -- JSON object
+      creator_affinities TEXT NOT NULL DEFAULT '{}',  -- JSON object
+      search_topics TEXT NOT NULL DEFAULT '[]',       -- JSON array
+      negative_content_ids TEXT NOT NULL DEFAULT '[]',-- JSON array
+      liked_content_ids TEXT NOT NULL DEFAULT '[]',   -- JSON array
+      total_completed_watches INTEGER NOT NULL DEFAULT 0,
+      total_watch_seconds INTEGER NOT NULL DEFAULT 0,
+      profile_version INTEGER NOT NULL DEFAULT 1,
+      updated_at INTEGER NOT NULL,
+      FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_rec_profiles_user ON user_recommendation_profiles(user_id);
   `);
 }

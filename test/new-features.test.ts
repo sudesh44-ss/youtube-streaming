@@ -391,4 +391,92 @@ assert(settingsSource.includes("handleDisconnectYouTube"), "Implements handleDis
 assert(settingsSource.includes("Reconnect Account"), "Renders Reconnect Account button");
 console.log("[PASS] YouTube Account settings section, OAuth token persistence, and disconnect route verified.");
 
+// 13. Persistent Recommendation Profiles Across 30-Day Activity Retention Purge
+console.log("\n13. Testing Persistent Recommendation Profiles Across 30-Day Purge...");
+const recProfileMigrationPath = path.join(process.cwd(), "supabase/migrations/20261025000001_persistent_recommendation_profiles.sql");
+assert(fs.existsSync(recProfileMigrationPath), "Persistent recommendation profiles SQL migration exists");
+const recProfileSql = fs.readFileSync(recProfileMigrationPath, "utf-8");
+assert(recProfileSql.includes("public.user_recommendation_profiles"), "Defines public.user_recommendation_profiles table");
+assert(recProfileSql.includes("category_affinities JSONB"), "Includes category_affinities column");
+assert(recProfileSql.includes("creator_affinities JSONB"), "Includes creator_affinities column");
+assert(recProfileSql.includes("search_topics JSONB"), "Includes search_topics column");
+assert(recProfileSql.includes("ENABLE ROW LEVEL SECURITY"), "Enforces RLS on user_recommendation_profiles");
+
+// In-memory simulation: verify learned profile survives raw activity purge
+import { mergePersistentProfileIntoSignals } from "../src/lib/data-service";
+const simulatedPostPurgeSignals = {
+  savedCategoryCounts: {} as Record<string, number>,
+  topWatchedCreators: {} as Record<string, number>,
+  recentSearchKeywords: [] as string[],
+  negativeContentIds: [] as string[],
+  likedContentIds: [] as string[],
+};
+const learnedPersistentProfile = {
+  userId: "user-longterm-1",
+  categoryAffinities: { technology: 0.85, study: 0.6 },
+  creatorAffinities: { "Tech Lead": 0.9 },
+  searchTopics: ["nextjs 15 features", "typescript tips"],
+  negativeContentIds: ["spam_vid_99"],
+  likedContentIds: ["best_tutorial_1"],
+  totalCompletedWatches: 12,
+  totalWatchSeconds: 15400,
+  profileVersion: 1,
+  updatedAt: Date.now(),
+};
+mergePersistentProfileIntoSignals(learnedPersistentProfile, simulatedPostPurgeSignals);
+assert(simulatedPostPurgeSignals.savedCategoryCounts["technology"] > 0, "Learned category affinity preserved after 30-day purge");
+assert(simulatedPostPurgeSignals.topWatchedCreators["Tech Lead"] > 0, "Learned creator affinity preserved after 30-day purge");
+assert(simulatedPostPurgeSignals.recentSearchKeywords.includes("nextjs 15 features"), "Learned search topics preserved after 30-day purge");
+assert(simulatedPostPurgeSignals.negativeContentIds.includes("spam_vid_99"), "Negative content filters preserved after 30-day purge");
+console.log("[PASS] Persistent recommendation profile survival across 30-day raw activity purge verified.");
+
+// 14. OAuth Token Refresh Mechanics & Subscribe API
+console.log("\n14. Testing OAuth Token Refresh Mechanics & Subscribe API...");
+assert(dataServiceSource.includes("refreshGoogleAccessToken"), "Implements refreshGoogleAccessToken helper");
+assert(dataServiceSource.includes("https://oauth2.googleapis.com/token"), "Calls Google OAuth token refresh endpoint");
+assert(dataServiceSource.includes('grant_type: "refresh_token"'), "Passes refresh_token grant type");
+
+const subscribeRoutePath = path.join(process.cwd(), "src/app/api/content/youtube-subscribe/route.ts");
+assert(fs.existsSync(subscribeRoutePath), "youtube-subscribe API route exists");
+const subscribeSource = fs.readFileSync(subscribeRoutePath, "utf-8");
+assert(subscribeSource.includes("https://www.googleapis.com/youtube/v3/subscriptions?part=snippet"), "Invokes official YouTube subscriptions endpoint");
+assert(subscribeSource.includes("getOAuthConnectionAsync"), "Queries user's authorized OAuth connection");
+assert(subscribeSource.includes("Authorization: `Bearer ${accessToken}`"), "Attaches Bearer access token to YouTube API request");
+console.log("[PASS] OAuth token refresh mechanics and Subscribe API integration verified.");
+
+// 15. Recommendation Explainability Reasons & Insights Pipeline
+console.log("\n15. Testing Recommendation Explainability Reasons & Insights Pipeline...");
+import { scoreCandidateVideoWithExplanation } from "../src/lib/recommendations";
+const explainCandidate: NormalizedContentItem = {
+  ...testBaseItem,
+  id: "explain_vid_1",
+  creator: "Tech Lead",
+  category: "technology",
+};
+const scoringResult = scoreCandidateVideoWithExplanation(explainCandidate, activeProfile, { mode: "normal" });
+assert(Array.isArray(scoringResult.reasons) && scoringResult.reasons.length > 0, "Generates explainability reasons");
+const hasCreatorReason = scoringResult.reasons.some((r) => r.includes("Tech Lead"));
+assert(hasCreatorReason, "Explainability reason identifies creator match");
+
+const rankedWithExplanations = rankCandidateVideos([explainCandidate], activeProfile, { mode: "normal" });
+assert(Array.isArray(rankedWithExplanations[0].recommendationReasons), "Ranked candidate includes recommendationReasons array");
+assert(rankedWithExplanations[0].recommendationScoreBreakdown !== undefined, "Ranked candidate includes recommendationScoreBreakdown");
+
+// Verify reset endpoint
+const resetRoutePath = path.join(process.cwd(), "src/app/api/content/recommendations/reset/route.ts");
+assert(fs.existsSync(resetRoutePath), "recommendations reset route exists");
+const resetSource = fs.readFileSync(resetRoutePath, "utf-8");
+assert(resetSource.includes("resetUserRecommendationProfileAsync"), "Reset route calls resetUserRecommendationProfileAsync");
+assert(resetSource.includes("invalidatePrefix"), "Reset route purges user cache prefix");
+
+// Verify Insights route
+const insightsRoutePath = path.join(process.cwd(), "src/app/api/user/insights/route.ts");
+assert(fs.existsSync(insightsRoutePath), "user insights API route exists");
+const insightsSource = fs.readFileSync(insightsRoutePath, "utf-8");
+assert(insightsSource.includes("yesterday"), "Calculates yesterday viewing summary");
+assert(insightsSource.includes("last7days"), "Calculates last 7 days viewing summary");
+assert(insightsSource.includes("monthlyWatchTime"), "Calculates monthly watch time");
+assert(insightsSource.includes("interests"), "Calculates category affinities");
+console.log("[PASS] Recommendation explainability, reset route, and Your Insights pipeline verified.");
+
 console.log("\n=== ALL NEW FEATURE TESTS PASSED ===");

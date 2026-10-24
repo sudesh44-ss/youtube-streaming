@@ -143,6 +143,171 @@ export function buildUserInterestProfile(
   };
 }
 
+export interface ScoringResult {
+  score: number;
+  reasons: string[];
+  breakdown: Record<string, number>;
+}
+
+/**
+ * Detailed scoring with explicit, explainable reasons and signal breakdown.
+ */
+export function scoreCandidateVideoWithExplanation(
+  item: NormalizedContentItem,
+  profile: UserInterestProfile,
+  options: RecommendationOptions,
+  weights: RankingWeights = DEFAULT_RANKING_WEIGHTS
+): ScoringResult {
+  const vidId = item.providerId || item.id?.replace(/^youtube:/, "");
+  const reasons: string[] = [];
+  const breakdown: Record<string, number> = {};
+
+  // 1. Explicit Negative Feedback ("Not interested") -> Immediate exclusion
+  if (profile.negativeContentIds.has(item.id) || (vidId && profile.negativeContentIds.has(vidId))) {
+    return {
+      score: weights.negativeFilter,
+      reasons: ["Hidden due to 'Not interested' feedback"],
+      breakdown: { negativeFilter: weights.negativeFilter },
+    };
+  }
+
+  // 2. Mode & Category boundary enforcement
+  if (options.mode === "category") {
+    if (options.category && item.category !== options.category) {
+      return {
+        score: -1000,
+        reasons: ["Excluded by Category Mode boundary"],
+        breakdown: { categoryBoundary: -1000 },
+      };
+    }
+    if (options.subcategory && item.subcategory?.toLowerCase() === options.subcategory.toLowerCase()) {
+      reasons.push(`Matches selected subcategory: ${item.subcategory}`);
+      return {
+        score: 85,
+        reasons,
+        breakdown: { subcategoryMatch: 85 },
+      };
+    }
+  }
+
+  let score = 50; // Neutral starting score
+  breakdown.baseline = 50;
+
+  // Signal A: Category Affinity
+  const itemCategory = (item.category || "").toLowerCase();
+  if (profile.categoryAffinity[itemCategory]) {
+    const boost = Math.round(Math.min(profile.categoryAffinity[itemCategory], 1.0) * weights.categoryRelevance);
+    score += boost;
+    breakdown.categoryAffinity = boost;
+    reasons.push(`Matches topics you frequently watch (${item.category || "Education & Discovery"})`);
+  } else if (profile.preferredCategories.includes(item.category)) {
+    const boost = Math.round(weights.categoryRelevance * 0.7);
+    score += boost;
+    breakdown.preferredCategory = boost;
+    reasons.push(`Selected in your preferred categories (${item.category})`);
+  }
+
+  // Signal B: Creator Affinity
+  const creatorNorm = (item.creator || "").trim().toLowerCase();
+  if (creatorNorm && profile.creatorAffinity[creatorNorm]) {
+    const boost = Math.round(Math.min(profile.creatorAffinity[creatorNorm], 1.0) * weights.creatorAffinity);
+    score += boost;
+    breakdown.creatorAffinity = boost;
+    reasons.push(`From ${item.creator}, a creator you frequently watch`);
+  }
+
+  // Signal C: Search Keyword Relevance
+  const itemText = `${item.title || ""} ${item.description || ""}`.toLowerCase();
+  let matchedSearchCount = 0;
+  let firstMatchedKeyword = "";
+  for (const kw of profile.searchKeywords) {
+    const terms = kw.split(/\s+/).filter((t) => t.length > 3);
+    const hasFullMatch = itemText.includes(kw);
+    const hasTermMatch = terms.some((t) => itemText.includes(t));
+    if (hasFullMatch || hasTermMatch) {
+      matchedSearchCount++;
+      if (!firstMatchedKeyword) firstMatchedKeyword = kw;
+      if (matchedSearchCount === 1) {
+        score += weights.searchRelevance;
+        breakdown.searchMatch = weights.searchRelevance;
+      } else if (matchedSearchCount === 2) {
+        score += weights.searchRelevance * 0.5;
+        breakdown.searchSecondaryMatch = weights.searchRelevance * 0.5;
+      }
+    }
+  }
+  if (firstMatchedKeyword) {
+    reasons.push(`Matches your recent search interest: '${firstMatchedKeyword}'`);
+  }
+
+  // Signal D: Saved Content & Likes Relevance
+  if (profile.likedContentIds.has(item.id) || (vidId && profile.likedContentIds.has(vidId))) {
+    const boost = weights.savedRelevance * 1.5;
+    score += boost;
+    breakdown.likedBoost = boost;
+    reasons.push("Based on videos you liked or saved");
+  }
+
+  // Signal E: Freshness & Publication Date
+  if (item.publicationDate) {
+    const year = parseInt(item.publicationDate.slice(0, 4), 10);
+    if (!isNaN(year)) {
+      if (year >= 2024) {
+        score += weights.freshness;
+        breakdown.freshness = weights.freshness;
+      } else if (year >= 2023) {
+        score += weights.freshness * 0.6;
+        breakdown.freshness = weights.freshness * 0.6;
+      } else if (year >= 2022) {
+        score += weights.freshness * 0.3;
+        breakdown.freshness = weights.freshness * 0.3;
+      }
+    }
+  }
+
+  // Signal F: Watched Video Handling (Down-ranking vs Completion vs Abandonment)
+  const watchedRecord = (vidId && profile.watchedVideoMap.get(vidId)) || profile.watchedVideoMap.get(item.id);
+  if (watchedRecord) {
+    if (watchedRecord.completed) {
+      score += weights.watchedPenalty;
+      breakdown.watchedPenalty = weights.watchedPenalty;
+    } else if (watchedRecord.abandoned) {
+      score += weights.abandonedPenalty;
+      breakdown.abandonedPenalty = weights.abandonedPenalty;
+    } else if (watchedRecord.progressPercent >= 15 && watchedRecord.progressPercent < 85) {
+      score += weights.completionBoost;
+      breakdown.continueWatching = weights.completionBoost;
+      reasons.unshift(`Continue watching from where you left off (${watchedRecord.progressPercent}% complete)`);
+    } else {
+      score += weights.watchedPenalty * 0.5;
+      breakdown.watchedPenalty = weights.watchedPenalty * 0.5;
+    }
+  }
+
+  // Signal G: High-quality Availability Status
+  if (item.availabilityStatus === "available") {
+    score += weights.availability;
+    breakdown.availability = weights.availability;
+  }
+
+  // Signal H: Exploratory Diversity Boost for Cold Start
+  if (profile.isColdStart) {
+    score += 10;
+    breakdown.coldStartDiversity = 10;
+    if (reasons.length === 0) {
+      reasons.push("Recommended for discovery based on regional trends");
+    }
+  } else if (reasons.length === 0) {
+    reasons.push("Curated for you based on regional discovery and trending content");
+  }
+
+  return {
+    score: Math.round(score),
+    reasons,
+    breakdown,
+  };
+}
+
 /**
  * Scores a candidate video against the User Interest Profile using transparent heuristics.
  */
@@ -152,97 +317,7 @@ export function scoreCandidateVideo(
   options: RecommendationOptions,
   weights: RankingWeights = DEFAULT_RANKING_WEIGHTS
 ): number {
-  const vidId = item.providerId || item.id?.replace(/^youtube:/, "");
-
-  // 1. Explicit Negative Feedback ("Not interested") -> Immediate exclusion
-  if (profile.negativeContentIds.has(item.id) || (vidId && profile.negativeContentIds.has(vidId))) {
-    return weights.negativeFilter;
-  }
-
-  // 2. Mode & Category boundary enforcement
-  if (options.mode === "category") {
-    if (options.category && item.category !== options.category) {
-      return -1000; // Strict boundary: Category Mode must never leak other categories
-    }
-    if (options.subcategory && item.subcategory?.toLowerCase() === options.subcategory.toLowerCase()) {
-      return 85;
-    }
-  }
-
-  let score = 50; // Neutral starting score
-
-  // Signal A: Category Affinity
-  const itemCategory = (item.category || "").toLowerCase();
-  if (profile.categoryAffinity[itemCategory]) {
-    score += Math.min(profile.categoryAffinity[itemCategory], 1.0) * weights.categoryRelevance;
-  } else if (profile.preferredCategories.includes(item.category)) {
-    score += weights.categoryRelevance * 0.7;
-  }
-
-  // Signal B: Creator Affinity
-  const creatorNorm = (item.creator || "").trim().toLowerCase();
-  if (creatorNorm && profile.creatorAffinity[creatorNorm]) {
-    score += Math.min(profile.creatorAffinity[creatorNorm], 1.0) * weights.creatorAffinity;
-  }
-
-  // Signal C: Search Keyword Relevance
-  const itemText = `${item.title || ""} ${item.description || ""}`.toLowerCase();
-  let matchedSearchCount = 0;
-  for (const kw of profile.searchKeywords) {
-    const terms = kw.split(/\s+/).filter((t) => t.length > 3);
-    const hasFullMatch = itemText.includes(kw);
-    const hasTermMatch = terms.some((t) => itemText.includes(t));
-    if (hasFullMatch || hasTermMatch) {
-      matchedSearchCount++;
-      if (matchedSearchCount === 1) score += weights.searchRelevance;
-      else if (matchedSearchCount === 2) score += weights.searchRelevance * 0.5;
-    }
-  }
-
-  // Signal D: Saved Content & Likes Relevance
-  if (profile.likedContentIds.has(item.id) || (vidId && profile.likedContentIds.has(vidId))) {
-    score += weights.savedRelevance * 1.5;
-  }
-
-  // Signal E: Freshness & Publication Date
-  if (item.publicationDate) {
-    const year = parseInt(item.publicationDate.slice(0, 4), 10);
-    if (!isNaN(year)) {
-      if (year >= 2024) score += weights.freshness;
-      else if (year >= 2023) score += weights.freshness * 0.6;
-      else if (year >= 2022) score += weights.freshness * 0.3;
-    }
-  }
-
-  // Signal F: Watched Video Handling (Down-ranking vs Completion vs Abandonment)
-  const watchedRecord = (vidId && profile.watchedVideoMap.get(vidId)) || profile.watchedVideoMap.get(item.id);
-  if (watchedRecord) {
-    if (watchedRecord.completed) {
-      // Completed videos are down-ranked to prioritize fresh discovery, but NOT permanently banned
-      score += weights.watchedPenalty;
-    } else if (watchedRecord.abandoned) {
-      // Early abandonment penalizes this specific video heavily
-      score += weights.abandonedPenalty;
-    } else if (watchedRecord.progressPercent >= 15 && watchedRecord.progressPercent < 85) {
-      // In-progress videos receive a continuation boost
-      score += weights.completionBoost;
-    } else {
-      score += weights.watchedPenalty * 0.5;
-    }
-  }
-
-  // Signal G: High-quality Availability Status
-  if (item.availabilityStatus === "available") {
-    score += weights.availability;
-  }
-
-  // Signal H: Exploratory Diversity Boost for Cold Start or Minor Categories
-  if (profile.isColdStart) {
-    // In cold start, give fair weight to diverse categories
-    score += 10;
-  }
-
-  return Math.round(score);
+  return scoreCandidateVideoWithExplanation(item, profile, options, weights).score;
 }
 
 /**
@@ -258,8 +333,14 @@ export function rankCandidateVideos(
   weights: RankingWeights = DEFAULT_RANKING_WEIGHTS
 ): NormalizedContentItem[] {
   const scored = candidates.map((item) => {
-    const score = scoreCandidateVideo(item, profile, options, weights);
-    return { item: { ...item, score }, score };
+    const { score, reasons, breakdown } = scoreCandidateVideoWithExplanation(item, profile, options, weights);
+    const enrichedItem: NormalizedContentItem = {
+      ...item,
+      score,
+      recommendationReasons: reasons,
+      recommendationScoreBreakdown: breakdown,
+    };
+    return { item: enrichedItem, score };
   });
 
   // Filter out hard excluded items (score <= 0)

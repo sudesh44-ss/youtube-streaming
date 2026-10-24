@@ -71,15 +71,16 @@ export default function PrivacyPolicyPage() {
 
         <section>
           <h2 style={{ fontSize: "1.25rem", fontWeight: 700, color: "var(--text-main)", marginBottom: "0.75rem" }}>
-            3. API Credentials &amp; Encryption Architecture
+            3. API Credentials, Connected Accounts &amp; Encryption Architecture
           </h2>
           <p style={{ marginBottom: "0.75rem" }}>
-            When you connect personal third-party credentials (such as a YouTube Data API v3 key or TMDB API key), we implement strict server-side cryptographic isolation:
+            When you connect personal third-party credentials (such as a YouTube Data API v3 key or TMDB API key) or authorize a Google/YouTube account for in-app channel subscriptions and ratings, we implement strict server-side cryptographic isolation:
           </p>
           <ul style={{ paddingLeft: "1.5rem", display: "flex", flexDirection: "column", gap: "0.5rem" }}>
-            <li><strong>Authenticated Encryption:</strong> All API secrets are encrypted using <strong>AES-256-GCM</strong> with unique 96-bit initialization vectors (IVs) and 128-bit authentication tags.</li>
-            <li><strong>No Client Exposure:</strong> Plaintext keys are never returned in client JSON responses or stored in browser localStorage. Only masked representations (e.g. <code>AIza••••••••487</code>) are displayed.</li>
-            <li><strong>Internal Server Usage:</strong> Decryption occurs exclusively in server memory during outgoing requests to official provider endpoints.</li>
+            <li><strong>Authenticated Encryption:</strong> All API secrets and OAuth access and refresh tokens are encrypted using <strong>AES-256-GCM</strong> with unique 96-bit initialization vectors (IVs) and 128-bit authentication tags.</li>
+            <li><strong>No Client Exposure:</strong> Plaintext credentials or tokens are never returned in client JSON responses or stored in browser localStorage. Only masked representations (e.g. <code>AIza••••••••487</code>) or connected channel identities are displayed.</li>
+            <li><strong>Internal Server Usage:</strong> Decryption occurs exclusively in server memory during outgoing requests to official provider endpoints. Expired OAuth tokens are refreshed automatically on the server via Google OAuth endpoints without exposing credentials.</li>
+            <li><strong>Revocation &amp; Disconnect:</strong> You can disconnect your YouTube account or delete provider API keys anytime from Settings. Disconnecting permanently purges all encrypted tokens from the database.</li>
           </ul>
         </section>
 
@@ -112,13 +113,14 @@ export default function PrivacyPolicyPage() {
         <section>
           <h2 style={{ fontSize: "1.25rem", fontWeight: 700, color: "var(--text-main)", marginBottom: "0.75rem", display: "flex", alignItems: "center", gap: "0.5rem" }}>
             <Database size={20} style={{ color: "var(--accent-emerald)" }} />
-            5. Data Retention and Local Storage Lifecycles
+            5. Data Retention, Recommendation Profiles &amp; Local Storage Lifecycles
           </h2>
           <p style={{ marginBottom: "0.75rem" }}>
             We implement strict data minimization principles with an automated lifecycle policy:
           </p>
           <ul style={{ paddingLeft: "1.5rem", display: "flex", flexDirection: "column", gap: "0.5rem" }}>
-            <li><strong>30-Day Server Retention for Activity:</strong> Search query history (<code>search_history</code>) and video watch records (<code>watch_history</code>) are subject to a 30-day retention schedule. Records older than 30 days are automatically pruned via automated database maintenance jobs.</li>
+            <li><strong>30-Day Server Retention for Raw Activity:</strong> Search query history (<code>search_history</code>) and video playback records (<code>watch_history</code>) are subject to an automated 30-day retention schedule. Records older than 30 days are automatically purged via scheduled database maintenance jobs.</li>
+            <li><strong>Persistent Learned Recommendation Profiles:</strong> To ensure your personalized discovery experience remains adaptive over time without storing unbounded raw activity, high-level learned category and creator affinities are stored in <code>user_recommendation_profiles</code>. You retain full control to reset or clear this profile at any time from the Insights dashboard or Settings.</li>
             <li><strong>Preserved Account Records:</strong> User profiles, country and language preferences, saved watchlists (<code>saved_content</code>), and encrypted API credentials remain safely preserved until explicitly edited or deleted by the user.</li>
             <li><strong>Browser-Local Cache Separation:</strong> Temporary local storage in your browser may retain recent search terms or cached metadata for offline resilience. You can clear this anytime using the &quot;Clear Local Activity Cache&quot; action in Settings or via browser privacy tools.</li>
           </ul>
@@ -148,7 +150,7 @@ export default function PrivacyPolicyPage() {
           </p>
           <ul style={{ paddingLeft: "1.5rem", display: "flex", flexDirection: "column", gap: "0.5rem", marginTop: "0.5rem" }}>
             <li>Your Supabase Auth user record is permanently deleted.</li>
-            <li>All associated database rows across <code>profiles</code>, <code>user_preferences</code>, <code>provider_credentials</code>, <code>saved_content</code>, <code>watch_history</code>, and <code>search_history</code> are cascaded and permanently deleted.</li>
+            <li>All associated database rows across <code>profiles</code>, <code>user_preferences</code>, <code>provider_credentials</code>, <code>oauth_connections</code>, <code>content_feedback</code>, <code>user_recommendation_profiles</code>, <code>saved_content</code>, <code>watch_history</code>, and <code>search_history</code> are cascaded and permanently deleted.</li>
             <li>All application cookies, session tokens, and browser-stored caches are immediately flushed.</li>
           </ul>
         </section>

@@ -36,7 +36,17 @@ export function ManageRecommendationsSection({ initialTopics }: ManageRecommenda
     showToast(`Demo Preview: "${name}" set to ${level.toUpperCase()}. (Illustrative only)`);
   };
 
-  const handleConfirmReset = () => {
+  const handleConfirmReset = async () => {
+    try {
+      const res = await fetch("/api/content/recommendations/reset", { method: "POST" });
+      if (res.ok) {
+        showToast("Recommendation profile reset successfully. Learned affinities and cached feeds cleared.");
+      } else {
+        showToast("Recommendation profile reset simulated in preview mode.");
+      }
+    } catch {
+      showToast("Recommendation profile reset simulated in preview mode.");
+    }
     // Reset to defaults
     setTopics(initialTopics);
     setActiveInterests({
@@ -47,7 +57,6 @@ export function ManageRecommendationsSection({ initialTopics }: ManageRecommenda
       nature: true,
     });
     setShowResetModal(false);
-    showToast("Demo Preview: Recommendation profile reset simulated. No database records were affected.");
   };
 
   const showToast = (message: string) => {
