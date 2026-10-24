@@ -16,6 +16,7 @@ import {
   FileText,
   Clock,
   Search,
+  BarChart3,
 } from "lucide-react";
 import { ThemeToggle } from "./ThemeToggle";
 import { clearLocalUserCollections } from "@/lib/local-storage";
@@ -50,6 +51,7 @@ const AUTH_NAV_ITEMS = [
   { label: "Watchlist", href: "/dashboard/saved", icon: Bookmark },
   { label: "Watch History", href: "/dashboard/history", icon: Clock },
   { label: "Search History", href: "/dashboard/search-history", icon: Search },
+  { label: "Your Insights", href: "/dashboard/insights", icon: BarChart3 },
   { label: "Settings", href: "/settings", icon: Settings },
 ];
 
@@ -168,14 +170,13 @@ export function Navbar() {
     document.addEventListener("keydown", handleKeyDown);
     document.addEventListener("pointerdown", handlePointerDown);
 
-    if (window.innerWidth < 768) {
-      document.body.style.overflow = "hidden";
-    }
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
 
     return () => {
       document.removeEventListener("keydown", handleKeyDown);
       document.removeEventListener("pointerdown", handlePointerDown);
-      document.body.style.overflow = "";
+      document.body.style.overflow = prevOverflow;
     };
   }, [menuOpen]);
 
@@ -215,6 +216,7 @@ export function Navbar() {
     { label: t("nav.watchlist") || "Watchlist", href: "/dashboard/saved", icon: Bookmark },
     { label: t("nav.history") || "Watch History", href: "/dashboard/history", icon: Clock },
     { label: t("nav.searchHistory") || "Search History", href: "/dashboard/search-history", icon: Search },
+    { label: t("nav.insights") || "Your Insights", href: "/dashboard/insights", icon: BarChart3 },
     { label: t("nav.settings") || "Settings", href: "/settings", icon: Settings },
   ];
 
@@ -248,24 +250,6 @@ export function Navbar() {
 
         {/* Action Controls & Menu Trigger */}
         <div className="nav-actions">
-          {/* Portfolio Attribution Link */}
-          <a
-            href="https://sudeshcreation.shop"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="nav-portfolio-link"
-            title="Portfolio • sudeshcreation.shop"
-            aria-label="Creator Portfolio"
-          >
-            <img
-              src="/icons/portfolio_logo.png"
-              alt="Sudesh Creation"
-              width={24}
-              height={24}
-              className="nav-portfolio-img"
-            />
-          </a>
-
           {!loading && !user && (
             <div className="nav-auth-buttons">
               <Link href="/auth/signin" className="btn btn-outline btn-sm">
@@ -277,7 +261,59 @@ export function Navbar() {
             </div>
           )}
 
-          {/* Unified Menu Toggle Button using icons folder */}
+          {/* 1. YouTube + YouTube Music Group (Shared rounded container) — Authenticated Only */}
+          {!loading && Boolean(user) && (
+            <div className="nav-app-switcher" role="group" aria-label="Switch Platform">
+              <Link
+                href="/dashboard"
+                className={`app-switcher-btn ${!pathname?.startsWith("/music") ? "active" : ""}`}
+                title="YouTube"
+                aria-label="YouTube"
+              >
+                <img
+                  src="/icons/youtube.png"
+                  alt="YouTube"
+                  width={18}
+                  height={18}
+                  className="app-switcher-icon"
+                />
+              </Link>
+              <Link
+                href="/music"
+                className={`app-switcher-btn ${pathname?.startsWith("/music") ? "active" : ""}`}
+                title="YouTube Music"
+                aria-label="YouTube Music"
+              >
+                <img
+                  src="/icons/youtube-music.png"
+                  alt="YouTube Music"
+                  width={18}
+                  height={18}
+                  className="app-switcher-icon"
+                />
+              </Link>
+            </div>
+          )}
+
+          {/* 2. Portfolio Attribution Button */}
+          <a
+            href="https://sudeshcreation.shop"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="nav-portfolio-link"
+            title="Portfolio • sudeshcreation.shop"
+            aria-label="Creator Portfolio"
+          >
+            <img
+              src="/icons/portfolio_logo.png"
+              alt="Sudesh Creation"
+              width={22}
+              height={22}
+              className="nav-portfolio-img"
+            />
+          </a>
+
+          {/* 3. Navigation Panel Button */}
           <button
             ref={toggleBtnRef}
             type="button"
@@ -297,40 +333,6 @@ export function Navbar() {
               aria-hidden="true"
             />
           </button>
-
-          {/* Platform Switcher: YouTube & YouTube Music — Immediately right of Menu Button, Authenticated Only */}
-          {!loading && Boolean(user) && (
-            <div className="nav-app-switcher" role="group" aria-label="Switch Platform">
-              <Link
-                href="/dashboard"
-                className={`app-switcher-btn ${!pathname?.startsWith("/music") ? "active" : ""}`}
-                title="YouTube"
-                aria-label="YouTube"
-              >
-                <img
-                  src="/icons/youtube.png"
-                  alt="YouTube"
-                  width={20}
-                  height={20}
-                  className="app-switcher-icon"
-                />
-              </Link>
-              <Link
-                href="/music"
-                className={`app-switcher-btn ${pathname?.startsWith("/music") ? "active" : ""}`}
-                title="YouTube Music"
-                aria-label="YouTube Music"
-              >
-                <img
-                  src="/icons/youtube-music.png"
-                  alt="YouTube Music"
-                  width={20}
-                  height={20}
-                  className="app-switcher-icon"
-                />
-              </Link>
-            </div>
-          )}
 
           {/* Desktop Dropdown Panel */}
           {menuOpen && (
@@ -777,24 +779,27 @@ export function Navbar() {
         }
 
         .nav-app-switcher {
-          display: flex;
+          display: inline-flex;
           align-items: center;
-          gap: 0.5rem;
-          background: transparent;
-          border: none;
-          padding: 0;
-          margin-left: 0.125rem;
+          gap: 3px;
+          height: 34px;
+          padding: 2px 3px;
+          border-radius: 9999px;
+          background-color: var(--bg-surface-elevated);
+          border: 1px solid var(--border-color);
+          box-sizing: border-box;
+          flex-shrink: 0;
         }
 
         .app-switcher-btn {
-          width: 36px;
-          height: 36px;
+          width: 28px;
+          height: 28px;
           border-radius: 50%;
           display: inline-flex;
           align-items: center;
           justify-content: center;
-          background-color: var(--bg-surface-elevated);
-          border: 1px solid var(--border-color);
+          background: transparent;
+          border: 1px solid transparent;
           transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
           cursor: pointer;
           text-decoration: none;
@@ -811,25 +816,25 @@ export function Navbar() {
 
         .app-switcher-btn:focus-visible {
           outline: 2px solid var(--primary);
-          outline-offset: 2px;
+          outline-offset: 1px;
         }
 
         /* Active highlight: subtle light-red background for the active platform */
         .app-switcher-btn.active {
-          background-color: rgba(239, 68, 68, 0.16);
+          background-color: rgba(239, 68, 68, 0.18);
           border-color: rgba(239, 68, 68, 0.45);
-          box-shadow: 0 0 12px rgba(239, 68, 68, 0.25);
+          box-shadow: 0 0 8px rgba(239, 68, 68, 0.25);
         }
 
         :global([data-theme="light"]) .app-switcher-btn.active {
-          background-color: rgba(239, 68, 68, 0.12);
+          background-color: rgba(239, 68, 68, 0.14);
           border-color: rgba(239, 68, 68, 0.35);
-          box-shadow: 0 2px 8px rgba(239, 68, 68, 0.15);
+          box-shadow: 0 2px 6px rgba(239, 68, 68, 0.15);
         }
 
         .app-switcher-icon {
-          width: 20px;
-          height: 20px;
+          width: 18px;
+          height: 18px;
           object-fit: contain;
           border-radius: 50%;
           display: block;
@@ -1247,26 +1252,30 @@ export function Navbar() {
         .nav-mobile-backdrop {
           position: fixed;
           inset: 0;
-          background: rgba(0, 0, 0, 0.55);
-          backdrop-filter: blur(4px);
+          background: rgba(0, 0, 0, 0.6);
+          backdrop-filter: blur(8px);
+          -webkit-backdrop-filter: blur(8px);
           animation: mobileFadeIn 0.2s ease forwards;
         }
 
         .nav-mobile-drawer {
           position: fixed;
           top: 0;
-          left: 0;
+          right: 0;
+          left: auto;
           bottom: 0;
-          width: 290px;
-          max-width: 85vw;
+          width: 50vw;
+          min-width: 260px;
+          max-width: 380px;
           background-color: var(--bg-surface);
-          border-right: 1px solid var(--border-color);
-          box-shadow: var(--shadow-lg);
+          border-left: 1px solid var(--border-color);
+          border-right: none;
+          box-shadow: -4px 0 24px rgba(0, 0, 0, 0.35);
           display: flex;
           flex-direction: column;
           z-index: 1000;
           overflow-y: auto;
-          animation: mobileSlideInLeft 0.25s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+          animation: mobileSlideInRight 0.25s cubic-bezier(0.16, 1, 0.3, 1) forwards;
           box-sizing: border-box;
         }
 
@@ -1397,9 +1406,9 @@ export function Navbar() {
           to { opacity: 1; }
         }
 
-        @keyframes mobileSlideInLeft {
+        @keyframes mobileSlideInRight {
           0% {
-            transform: translateX(-100%);
+            transform: translateX(100%);
           }
           100% {
             transform: translateX(0);

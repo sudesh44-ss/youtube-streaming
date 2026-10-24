@@ -68,6 +68,18 @@ class MemoryCacheService {
     this.inFlight.clear();
   }
 
+  keys(): IterableIterator<string> {
+    return this.store.keys();
+  }
+
+  invalidatePrefix(prefix: string): void {
+    for (const key of Array.from(this.store.keys())) {
+      if (key.startsWith(prefix) || key.includes(prefix)) {
+        this.store.delete(key);
+      }
+    }
+  }
+
   /**
    * Single-flight execution: ensures identical concurrent asynchronous requests
    * share a single in-flight promise instead of stampeding the upstream API.
@@ -142,6 +154,7 @@ export function buildSearchCacheKey(params: {
  * Builds safe, normalized cache keys for category recommendations.
  */
 export function buildRecCacheKey(params: {
+  userId?: string;
   category?: string;
   subcategory?: string;
   mode?: string;
@@ -149,13 +162,14 @@ export function buildRecCacheKey(params: {
   country?: string;
   limit?: number;
 }): string {
+  const u = params.userId || "anon";
   const cat = params.category || "general";
   const subcat = params.subcategory || "none";
   const mode = params.mode || "normal";
   const vt = params.videoType || "all";
   const c = params.country || "US";
   const lim = params.limit || 16;
-  return `rec:${c}:${mode}:${cat}:${subcat}:${vt}:${lim}`;
+  return `rec:${u}:${c}:${mode}:${cat}:${subcat}:${vt}:${lim}`;
 }
 
 /**

@@ -1,8 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getCurrentSession } from "@/lib/auth";
-import { getDb } from "@/lib/db";
 import { encryptSecret } from "@/lib/crypto";
-import crypto from "node:crypto";
+import { saveOAuthConnectionAsync } from "@/lib/data-service";
 
 export const dynamic = "force-dynamic";
 
@@ -87,42 +86,22 @@ export async function GET(request: NextRequest) {
       // Graceful fallback
     }
 
-    const db = getDb();
     const now = Date.now();
     const expiresAt = now + expiresIn * 1000;
-    const connId = crypto.randomUUID();
 
-    db.prepare(`
-      INSERT INTO oauth_connections (
-        id, user_id, provider, encrypted_access_token, iv, auth_tag,
-        encrypted_refresh_token, refresh_iv, refresh_auth_tag,
-        expires_at, scope, channel_title, created_at, updated_at
-      ) VALUES (?, ?, 'youtube', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      ON CONFLICT(user_id, provider) DO UPDATE SET
-        encrypted_access_token = excluded.encrypted_access_token,
-        iv = excluded.iv,
-        auth_tag = excluded.auth_tag,
-        encrypted_refresh_token = COALESCE(excluded.encrypted_refresh_token, oauth_connections.encrypted_refresh_token),
-        refresh_iv = COALESCE(excluded.refresh_iv, oauth_connections.refresh_iv),
-        refresh_auth_tag = COALESCE(excluded.refresh_auth_tag, oauth_connections.refresh_auth_tag),
-        expires_at = excluded.expires_at,
-        channel_title = excluded.channel_title,
-        updated_at = excluded.updated_at
-    `).run(
-      connId,
-      session.user.id,
-      encAccess.ciphertext,
-      encAccess.iv,
-      encAccess.authTag,
-      encRefreshCipher,
-      encRefreshIv,
-      encRefreshTag,
+    await saveOAuthConnectionAsync({
+      userId: session.user.id,
+      provider: "youtube",
+      encryptedAccessToken: encAccess.ciphertext,
+      iv: encAccess.iv,
+      authTag: encAccess.authTag,
+      encryptedRefreshToken: encRefreshCipher,
+      refreshIv: encRefreshIv,
+      refreshAuthTag: encRefreshTag,
       expiresAt,
-      tokenData.scope || "youtube",
+      scope: tokenData.scope || "https://www.googleapis.com/auth/youtube",
       channelTitle,
-      now,
-      now
-    );
+    });
 
     return NextResponse.redirect(new URL("/settings?connected=youtube", requestUrl.origin));
   } catch (err) {

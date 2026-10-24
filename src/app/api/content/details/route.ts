@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getCurrentSession } from "@/lib/auth";
 import { getUserProviderKeyAsync } from "@/lib/data-service";
 import { CURATED_CATALOG } from "@/lib/providers/curated-data";
+import { parseIsoDuration } from "@/lib/format-utils";
 
 export interface VideoDetailResponse {
   id: string;
@@ -86,7 +87,9 @@ export async function GET(req: NextRequest) {
           if (vItem) {
             const snippet = vItem.snippet || {};
             const stats = vItem.statistics || {};
+            const contentDetails = vItem.contentDetails || {};
             const channelId = snippet.channelId;
+            const parsedDuration = parseIsoDuration(contentDetails.duration).formatted;
 
             let channelAvatar: string | undefined = undefined;
             let subscriberCount: string | undefined = undefined;
@@ -129,6 +132,7 @@ export async function GET(req: NextRequest) {
               subscriberCount,
               category: "general",
               publicationDate: snippet.publishedAt ? snippet.publishedAt.split("T")[0] : undefined,
+              duration: parsedDuration || undefined,
               views: stats.viewCount ? `${formatCount(stats.viewCount)} views` : undefined,
               likes: stats.likeCount ? formatCount(stats.likeCount) : undefined,
               embedUrl: `https://www.youtube.com/embed/${videoId}`,

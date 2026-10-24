@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getCurrentSession } from "@/lib/auth";
-import { getUserProviderKeyAsync } from "@/lib/data-service";
+import { getUserProviderKeyAsync, getUserRecommendationSignalsAsync, UserRecommendationSignals } from "@/lib/data-service";
 import { YouTubeAdapter } from "@/lib/providers/youtube";
-import { getRecommendedContent } from "@/lib/recommendations";
+import { getRecommendedContent, buildUserInterestProfile, rankCandidateVideos } from "@/lib/recommendations";
 import { getCachedFeed, setCachedFeed, DiscoverFeedData } from "@/lib/feed-cache";
 import { NormalizedContentItem } from "@/lib/types";
 import { ServerTimer } from "@/lib/timing";
@@ -148,11 +148,34 @@ export async function GET(req: NextRequest) {
       addCandidates(rawComedy);
       addCandidates(rawRecommended);
 
-      // Shuffle candidate pool to ensure diverse, mixed discovery
-      const shuffled = shuffleArray(candidatePool);
+      // Retrieve real user activity signals and construct interest profile
+      let signals: UserRecommendationSignals = {
+        preferredCategories: [],
+        savedCategoryCounts: {},
+        recentSearchKeywords: [],
+        country,
+      };
 
-      // Strictly select up to 20 unique items for the unified feed batch
-      const unified20 = shuffled.slice(0, 20);
+      if (userId) {
+        try {
+          signals = await getUserRecommendationSignalsAsync(userId);
+        } catch (err) {
+          console.warn("Failed to retrieve user recommendation signals for feed:", err);
+        }
+      }
+
+      const profile = buildUserInterestProfile(signals, userId);
+
+      // Rank candidate pool using the multi-signal personalized ranking engine
+      const ranked = rankCandidateVideos(candidatePool, profile, {
+        userId,
+        mode: "normal",
+        regionCode: country,
+        limit: 20,
+      });
+
+      // Strictly select up to 20 unique personalized items for the unified feed batch
+      const unified20 = ranked.length > 0 ? ranked.slice(0, 20) : shuffleArray(candidatePool).slice(0, 20);
 
       // Populate category slices for backward compatibility
       const trending = unified20.slice(0, 6);

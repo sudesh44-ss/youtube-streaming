@@ -265,5 +265,19 @@ function initSchema(db: DatabaseSync) {
     );
 
     CREATE INDEX IF NOT EXISTS idx_oauth_connections_user ON oauth_connections(user_id);
+
+    -- Content Feedback (Explicit user feedback: not_interested, like, dislike)
+    CREATE TABLE IF NOT EXISTS content_feedback (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      content_id TEXT NOT NULL,
+      feedback_type TEXT NOT NULL,
+      created_at INTEGER NOT NULL,
+      UNIQUE(user_id, content_id, feedback_type),
+      FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_content_feedback_user ON content_feedback(user_id);
+    CREATE INDEX IF NOT EXISTS idx_content_feedback_user_type ON content_feedback(user_id, feedback_type);
   `);
 }

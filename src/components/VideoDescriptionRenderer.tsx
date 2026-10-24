@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { ChevronDown, ChevronUp, Clock, ExternalLink } from "lucide-react";
 
 interface VideoDescriptionRendererProps {
@@ -22,6 +22,11 @@ function parseTimestampToSeconds(ts: string): number {
 
 export function VideoDescriptionRenderer({ description, onSeek }: VideoDescriptionRendererProps) {
   const [isExpanded, setIsExpanded] = useState(false);
+
+  // Reset expanded state whenever video description changes (navigating to a different video)
+  useEffect(() => {
+    setIsExpanded(false);
+  }, [description]);
 
   // Parse lines into tokens: text, timestamp button, or clickable link
   const parsedContent = useMemo(() => {
@@ -53,7 +58,10 @@ export function VideoDescriptionRenderer({ description, onSeek }: VideoDescripti
             <button
               key={`ts-${lineIdx}-${match.index}`}
               type="button"
-              onClick={() => onSeek(seconds)}
+              onClick={(e) => {
+                e.stopPropagation();
+                onSeek(seconds);
+              }}
               className="desc-timestamp-btn"
               title={`Jump playback to ${token}`}
               aria-label={`Jump to timestamp ${token}`}
@@ -70,6 +78,9 @@ export function VideoDescriptionRenderer({ description, onSeek }: VideoDescripti
               href={href}
               target="_blank"
               rel="noopener noreferrer"
+              onClick={(e) => {
+                e.stopPropagation();
+              }}
               className="desc-link"
               title={href}
             >
@@ -92,6 +103,7 @@ export function VideoDescriptionRenderer({ description, onSeek }: VideoDescripti
       return (
         <span key={`line-${lineIdx}`} className="desc-line">
           {elements.length > 0 ? elements : "\u00A0"}
+          {lineIdx < lines.length - 1 && "\n"}
         </span>
       );
     });
@@ -100,31 +112,54 @@ export function VideoDescriptionRenderer({ description, onSeek }: VideoDescripti
   if (!description) {
     return (
       <div className="watch-description-box empty">
-        <p style={{ color: "var(--text-muted)", fontSize: "0.875rem" }}>
+        <p style={{ color: "var(--text-muted)", fontSize: "0.875rem", margin: 0 }}>
           No description provided for this video.
         </p>
       </div>
     );
   }
 
-  const isLong = description.length > 200 || description.split("\n").length > 3;
+  // Determine if description exceeds 2 lines
+  const isLong = description.length > 120 || description.split("\n").filter((l) => l.trim().length > 0).length > 2;
+
+  const handleBoxClick = (e: React.MouseEvent) => {
+    if (!isLong) return;
+
+    // Check if user is currently selecting/highlighting text to copy
+    const selection = window.getSelection();
+    if (selection && selection.toString().trim().length > 0) {
+      return; // Do not toggle on text selection
+    }
+
+    setIsExpanded((prev) => !prev);
+  };
 
   return (
-    <div className="watch-description-box">
+    <div
+      onClick={handleBoxClick}
+      className={`watch-description-box ${isLong ? "clickable" : ""} ${isExpanded ? "expanded" : "collapsed"}`}
+      role={isLong ? "button" : undefined}
+      tabIndex={isLong ? 0 : undefined}
+      onKeyDown={(e) => {
+        if (isLong && (e.key === "Enter" || e.key === " ")) {
+          e.preventDefault();
+          setIsExpanded((prev) => !prev);
+        }
+      }}
+      aria-expanded={isLong ? isExpanded : undefined}
+      aria-label={isLong ? (isExpanded ? "Collapse video description" : "Expand video description") : undefined}
+    >
       <div className={`description-body ${isExpanded ? "expanded" : "clamped"}`}>
         {parsedContent}
       </div>
 
       {isLong && (
-        <button
-          type="button"
-          onClick={() => setIsExpanded(!isExpanded)}
-          className="description-toggle-btn"
-          aria-expanded={isExpanded}
-        >
-          <span>{isExpanded ? "Show less" : "Show more"}</span>
+        <div className="description-toggle-row">
+          <span className="desc-toggle-label">
+            {isExpanded ? "Show less" : "...more"}
+          </span>
           {isExpanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
-        </button>
+        </div>
       )}
 
       <style jsx>{`
@@ -135,31 +170,42 @@ export function VideoDescriptionRenderer({ description, onSeek }: VideoDescripti
           padding: 1rem 1.125rem;
           margin-top: 1.25rem;
           transition: background-color 0.2s ease, border-color 0.2s ease;
+          position: relative;
+          user-select: text;
+          -webkit-user-select: text;
+        }
+
+        .watch-description-box.clickable {
+          cursor: pointer;
+        }
+
+        .watch-description-box.clickable:hover {
+          background-color: var(--bg-subtle);
+          border-color: var(--border-focus);
         }
 
         .description-body {
           font-size: 0.875rem;
           line-height: 1.6;
           color: var(--text-main);
-          display: flex;
-          flex-direction: column;
-          gap: 0.25rem;
+          white-space: pre-wrap;
           word-break: break-word;
         }
 
         .description-body.clamped {
           display: -webkit-box;
-          -webkit-line-clamp: 3;
+          -webkit-line-clamp: 2;
           -webkit-box-orient: vertical;
           overflow: hidden;
+          text-overflow: ellipsis;
         }
 
         .description-body.expanded {
-          display: flex;
+          display: block;
         }
 
         .desc-line {
-          min-height: 1.25rem;
+          display: inline;
         }
 
         :global(.desc-timestamp-btn) {
@@ -202,23 +248,18 @@ export function VideoDescriptionRenderer({ description, onSeek }: VideoDescripti
           color: #38bdf8;
         }
 
-        .description-toggle-btn {
-          margin-top: 0.75rem;
-          background: none;
-          border: none;
+        .description-toggle-row {
+          margin-top: 0.5rem;
+          display: flex;
+          align-items: center;
+          gap: 0.25rem;
           color: var(--text-muted);
           font-size: 0.8125rem;
           font-weight: 600;
-          cursor: pointer;
-          display: inline-flex;
-          align-items: center;
-          gap: 0.25rem;
-          padding: 0;
-          transition: color 0.15s ease;
         }
 
-        .description-toggle-btn:hover {
-          color: var(--text-main);
+        .watch-description-box.clickable:hover .description-toggle-row {
+          color: var(--primary);
         }
       `}</style>
     </div>

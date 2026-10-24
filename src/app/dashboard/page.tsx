@@ -3,16 +3,23 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { NormalizedContentItem, BrowsingMode, CATEGORIES, YouTubeChannelItem } from "@/lib/types";
-import { ModeSelector } from "@/components/ModeSelector";
+import { ModeSelector, BrowsingModeToggle, FormatFilter } from "@/components/ModeSelector";
 import { CategoryBar } from "@/components/CategoryBar";
 import { SearchBar } from "@/components/SearchBar";
 import { ContentCard } from "@/components/ContentCard";
 import { ChannelCard } from "@/components/ChannelCard";
 import { ContentModal } from "@/components/ContentModal";
 import { ApiKeyRequirement } from "@/components/ApiKeyRequirement";
+import { FeaturedBanner } from "@/components/FeaturedBanner";
+import { ProgressLoader } from "@/components/ProgressLoader";
 import { SlidersHorizontal, RefreshCw, AlertCircle, Compass, Bookmark, Users, Video } from "lucide-react";
 import Link from "next/link";
 import { addToSearchHistory } from "@/lib/local-storage";
+import {
+  getLocalSearchCache,
+  setLocalSearchCache,
+  deduplicateInFlightSearch,
+} from "@/lib/search-cache";
 import { useTranslation } from "@/lib/i18n/LanguageContext";
 
 export default function DashboardPage() {
@@ -190,6 +197,24 @@ export default function DashboardPage() {
       setLoading(true);
       setError(null);
 
+      // 1. Check local-only search cache (policy-compliant, zero network/quota usage)
+      if (activeQuery.trim()) {
+        try {
+          const localCached = await getLocalSearchCache(activeQuery.trim(), selectedCategory, activeVideoType);
+          if (localCached && Array.isArray(localCached.items) && localCached.items.length > 0) {
+            if (currentReqId !== requestIdRef.current) return;
+            setRequiresApiKey(false);
+            setItems(localCached.items.slice(0, 20));
+            setChannelResults(localCached.channels || []);
+            setNextPageToken(localCached.nextPageToken);
+            setLoading(false);
+            return;
+          }
+        } catch {
+          // Non-blocking: fall through to live fetch
+        }
+      }
+
       try {
         const params = new URLSearchParams();
         if (activeQuery.trim()) params.set("q", activeQuery.trim());
@@ -244,6 +269,21 @@ export default function DashboardPage() {
             setChannelResults(data.channels);
           } else if (!activeQuery.trim()) {
             setChannelResults([]);
+          }
+
+          // Persist search results strictly to local-only cache (never sent to Supabase or cloud database)
+          if (activeQuery.trim() && deduped.length > 0) {
+            setLocalSearchCache(
+              activeQuery.trim(),
+              {
+                items: deduped.slice(0, 20),
+                channels: Array.isArray(data.channels) ? data.channels : [],
+                nextPageToken: data.nextPageToken || undefined,
+                count: deduped.length,
+              },
+              selectedCategory,
+              activeVideoType
+            ).catch(() => {});
           }
         }
       } catch (err: any) {
@@ -446,43 +486,26 @@ export default function DashboardPage() {
 
   if (authLoading) {
     return (
-      <div className="container" style={{ padding: "5rem 0", textAlign: "center" }}>
-        <RefreshCw size={32} className="spin" style={{ color: "var(--primary)", margin: "0 auto 1rem" }} />
-        <p style={{ color: "var(--text-muted)" }}>Authenticating session...</p>
+      <div className="container" style={{ padding: "3rem 0", textAlign: "center" }}>
+        <ProgressLoader message="Authenticating session..." />
       </div>
     );
   }
 
   return (
     <div className="container" style={{ padding: "2rem 1.25rem 5rem" }}>
-      {/* Top Header Row with Mode Selector & Saved Watchlist Link */}
-      <div
-        style={{
-          display: "flex",
-          flexWrap: "wrap",
-          alignItems: "center",
-          justifyContent: "space-between",
-          gap: "1rem",
-          marginBottom: "1.5rem",
-        }}
-      >
+      {/* Row 1: Discover heading (left) + Mode Selector toggle (right) */}
+      <div className="dashboard-header-row1">
         <div>
-          <h1
-            style={{
-              fontSize: "1.75rem",
-              fontWeight: 800,
-              color: "var(--text-main)",
-              letterSpacing: "-0.02em",
-              margin: 0,
-            }}
-          >
+          <h1 className="dashboard-title">
             {mode === "category" && activeCategoryDef
               ? `${activeCategoryDef.name} Discovery`
               : "Discover"}
           </h1>
         </div>
 
-        <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
+        {/* Desktop Controls: Format Filter + Mode Selector */}
+        <div className="desktop-controls">
           <ModeSelector
             mode={mode}
             onChange={handleModeChange}
@@ -490,25 +513,56 @@ export default function DashboardPage() {
             onVideoTypeChange={handleVideoTypeChange}
           />
         </div>
+
+        {/* Mobile Row 1 Right: Mode Selector Toggle (Normal Mode / Category Mode) */}
+        <div className="mobile-mode-toggle">
+          <BrowsingModeToggle mode={mode} onChange={handleModeChange} />
+        </div>
       </div>
 
-      {/* Category Bar Navigation */}
+      {/* Row 2 (Mobile): Shorts & Videos (left) + Refresh Feed button (right) */}
+      <div className="mobile-header-row2">
+        <FormatFilter
+          videoType={videoType}
+          onVideoTypeChange={handleVideoTypeChange}
+        />
+        <button
+          type="button"
+          onClick={() => {
+            if (isStreamingDefaultView) {
+              fetchFeed(true);
+            } else {
+              fetchContent();
+            }
+          }}
+          disabled={refreshing || loading}
+          className="btn btn-outline btn-sm mobile-refresh-btn"
+          title="Refresh discovery feed"
+        >
+          <RefreshCw size={13} className={refreshing || loading ? "spin" : ""} />
+          <span>Refresh Feed</span>
+        </button>
+      </div>
+
+      {/* Row 3: Search Omnibar (full width) */}
+      <div className="dashboard-search-row">
+        <SearchBar
+          value={searchQuery}
+          onChange={setSearchQuery}
+          onSearch={handleSearchSubmit}
+          categoryName={activeCategoryDef?.name}
+          isCategoryMode={mode === "category"}
+          loading={loading && Boolean(submittedQuery)}
+        />
+      </div>
+
+      {/* Category Bar Navigation (active in Category Mode) */}
       <CategoryBar
         selectedCategory={selectedCategory}
         selectedSubcategory={selectedSubcategory}
         onSelectCategory={handleCategoryChange}
         onSelectSubcategory={setSelectedSubcategory}
         isCategoryMode={mode === "category"}
-      />
-
-      {/* Search Omnibar */}
-      <SearchBar
-        value={searchQuery}
-        onChange={setSearchQuery}
-        onSearch={handleSearchSubmit}
-        categoryName={activeCategoryDef?.name}
-        isCategoryMode={mode === "category"}
-        loading={loading && Boolean(submittedQuery)}
       />
 
       {/* Filter and Sort Status Bar (Active during search or category mode) */}
@@ -618,6 +672,17 @@ export default function DashboardPage() {
       {/* UNIFIED 20-VIDEO CONTINUOUS FEED GRID */}
       {!requiresApiKey && !loading && isStreamingDefaultView && items.length > 0 && (
         <div>
+          {/* Featured Video Banner Carousel above Mixed Discovery Feed */}
+          <FeaturedBanner
+            items={items.slice(0, 5)}
+            onPlay={handleSelectItem}
+            onToggleSave={(savedItem) => {
+              setItems((prev) =>
+                prev.map((it) => (it.id === savedItem.id ? savedItem : it))
+              );
+            }}
+          />
+
           <div
             style={{
               display: "flex",
@@ -822,6 +887,41 @@ export default function DashboardPage() {
       />
 
       <style jsx>{`
+        .dashboard-header-row1 {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 1rem;
+          margin-bottom: 1.5rem;
+        }
+
+        .dashboard-title {
+          font-size: 1.75rem;
+          font-weight: 800;
+          color: var(--text-main);
+          letter-spacing: -0.02em;
+          margin: 0;
+        }
+
+        .desktop-controls {
+          display: flex;
+          align-items: center;
+          gap: 0.75rem;
+        }
+
+        .mobile-mode-toggle {
+          display: none;
+        }
+
+        .mobile-header-row2 {
+          display: none;
+        }
+
+        .dashboard-search-row {
+          width: 100%;
+          margin-bottom: 1.5rem;
+        }
+
         .search-results-grid {
           display: grid;
           grid-template-columns: repeat(3, 1fr);
@@ -844,6 +944,53 @@ export default function DashboardPage() {
           .search-results-grid {
             grid-template-columns: 1fr !important;
             gap: 1.25rem !important;
+          }
+        }
+
+        @media (max-width: 767px) {
+          .desktop-controls {
+            display: none !important;
+          }
+
+          .dashboard-header-row1 {
+            display: flex !important;
+            align-items: center !important;
+            justify-content: space-between !important;
+            gap: 0.75rem !important;
+            margin-bottom: 0.875rem !important;
+          }
+
+          .dashboard-title {
+            font-size: 1.35rem !important;
+          }
+
+          .mobile-mode-toggle {
+            display: flex !important;
+            align-items: center !important;
+            flex-shrink: 0 !important;
+          }
+
+          .mobile-header-row2 {
+            display: flex !important;
+            align-items: center !important;
+            justify-content: space-between !important;
+            gap: 0.75rem !important;
+            margin-bottom: 1rem !important;
+            width: 100% !important;
+          }
+
+          .mobile-refresh-btn {
+            display: inline-flex !important;
+            align-items: center !important;
+            gap: 0.35rem !important;
+            padding: 0.4rem 0.75rem !important;
+            font-size: 0.8125rem !important;
+            border-radius: var(--radius-full) !important;
+            flex-shrink: 0 !important;
+          }
+
+          .dashboard-search-row {
+            margin-bottom: 1.25rem !important;
           }
         }
       `}</style>

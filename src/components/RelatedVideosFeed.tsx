@@ -2,8 +2,10 @@
 
 import { useEffect, useState, useMemo } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { Play, Sparkles } from "lucide-react";
 import { NormalizedContentItem } from "@/lib/types";
+import { formatUploadAge, formatViewCount } from "@/lib/format-utils";
 
 interface RelatedVideosFeedProps {
   currentVideoId: string;
@@ -12,6 +14,7 @@ interface RelatedVideosFeedProps {
 }
 
 export function RelatedVideosFeed({ currentVideoId, title, category }: RelatedVideosFeedProps) {
+  const router = useRouter();
   const [items, setItems] = useState<NormalizedContentItem[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -103,15 +106,58 @@ export function RelatedVideosFeed({ currentVideoId, title, category }: RelatedVi
                   <h3 className="related-video-title" title={video.title}>
                     {video.title}
                   </h3>
-                  <p className="related-channel-name">{video.creator || "Creator"}</p>
-                  <div className="related-meta-row">
-                    {video.views && <span>{video.views}</span>}
-                    {video.publicationDate && (
-                      <>
-                        <span className="related-dot">•</span>
-                        <span>{new Date(video.publicationDate).toLocaleDateString(undefined, { month: "short", day: "numeric" })}</span>
-                      </>
-                    )}
+
+                  {/* Creator metadata row on the same line: [Avatar] Creator · views · upload age */}
+                  <div className="related-meta-line">
+                    <div
+                      className={`related-creator-group ${video.channelId ? "clickable" : "non-clickable"}`}
+                      onClick={(e) => {
+                        if (video.channelId) {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          router.push(`/channel/${encodeURIComponent(video.channelId)}`);
+                        }
+                      }}
+                      title={video.channelId ? `View ${video.creator}'s channel` : undefined}
+                    >
+                      <div className="related-avatar-wrap">
+                        {video.channelAvatar ? (
+                          <img
+                            src={video.channelAvatar}
+                            alt={video.creator || "Creator"}
+                            className="related-avatar-img"
+                            onError={(e) => {
+                              (e.target as HTMLElement).style.display = "none";
+                              const fb = (e.target as HTMLElement).parentElement?.querySelector(".related-avatar-fallback") as HTMLElement;
+                              if (fb) fb.style.display = "flex";
+                            }}
+                          />
+                        ) : null}
+                        <div
+                          className="related-avatar-fallback"
+                          style={{ display: video.channelAvatar ? "none" : "flex" }}
+                        >
+                          {((video.creator || "C").charAt(0)).toUpperCase()}
+                        </div>
+                      </div>
+
+                      <span className="related-channel-name">
+                        {video.creator || "Creator"}
+                      </span>
+                    </div>
+
+                    {(() => {
+                      const formattedViews = formatViewCount(video.views);
+                      const uploadAge = formatUploadAge(video.publicationDate);
+                      return (
+                        <>
+                          {(formattedViews || uploadAge) && <span className="related-dot">·</span>}
+                          {formattedViews && <span>{formattedViews}</span>}
+                          {formattedViews && uploadAge && <span className="related-dot">·</span>}
+                          {uploadAge && <span>{uploadAge}</span>}
+                        </>
+                      );
+                    })()}
                   </div>
                 </div>
               </Link>
@@ -124,7 +170,7 @@ export function RelatedVideosFeed({ currentVideoId, title, category }: RelatedVi
         .related-videos-section {
           margin-top: 2.5rem;
           padding-top: 1.5rem;
-          border-top: 1px solid var(--border-color);
+          border-top: none;
         }
 
         .related-header {
@@ -241,6 +287,70 @@ export function RelatedVideosFeed({ currentVideoId, title, category }: RelatedVi
           overflow: hidden;
         }
 
+        .related-meta-line {
+          display: flex;
+          align-items: center;
+          flex-wrap: wrap;
+          gap: 0.35rem 0.45rem;
+          font-size: 0.75rem;
+          color: var(--text-dim);
+          line-height: 1.3;
+          margin-top: 0.15rem;
+        }
+
+        .related-creator-group {
+          display: inline-flex;
+          align-items: center;
+          gap: 0.35rem;
+          color: var(--text-muted);
+        }
+
+        .related-creator-group.clickable {
+          cursor: pointer;
+        }
+
+        .related-creator-group.clickable:hover .related-channel-name {
+          color: var(--primary);
+          text-decoration: underline;
+        }
+
+        .related-creator-group.non-clickable {
+          cursor: default;
+        }
+
+        .related-avatar-wrap {
+          width: 20px;
+          height: 20px;
+          border-radius: 50%;
+          overflow: hidden;
+          background-color: var(--bg-surface-elevated);
+          border: 1px solid var(--border-color);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          flex-shrink: 0;
+        }
+
+        .related-avatar-img {
+          width: 100%;
+          height: 100%;
+          object-fit: cover;
+          border-radius: 50%;
+        }
+
+        .related-avatar-fallback {
+          width: 100%;
+          height: 100%;
+          border-radius: 50%;
+          background: linear-gradient(135deg, #38bdf8, #2563eb);
+          color: #fff;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          font-size: 0.625rem;
+          font-weight: 700;
+        }
+
         .related-channel-name {
           font-size: 0.75rem;
           color: var(--text-muted);
@@ -248,14 +358,8 @@ export function RelatedVideosFeed({ currentVideoId, title, category }: RelatedVi
           white-space: nowrap;
           overflow: hidden;
           text-overflow: ellipsis;
-        }
-
-        .related-meta-row {
-          display: flex;
-          align-items: center;
-          gap: 0.375rem;
-          font-size: 0.6875rem;
-          color: var(--text-dim);
+          max-width: 130px;
+          transition: color 0.15s ease;
         }
 
         .related-dot {

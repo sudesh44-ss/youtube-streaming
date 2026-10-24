@@ -52,6 +52,15 @@ function parseTimeToSeconds(val: string | null): number {
   return total;
 }
 
+function parseDurationToSeconds(dur?: string): number {
+  if (!dur) return 0;
+  const clean = dur.trim();
+  const parts = clean.split(":").map(Number);
+  if (parts.length === 3) return parts[0] * 3600 + parts[1] * 60 + parts[2];
+  if (parts.length === 2) return parts[0] * 60 + parts[1];
+  return 0;
+}
+
 interface WatchClientProps {
   videoId: string;
   initialTitle?: string;
@@ -98,15 +107,6 @@ export default function WatchClient({ videoId, initialTitle }: WatchClientProps)
 
   // Share Modal state
   const [shareOpen, setShareOpen] = useState(false);
-
-  // Track playback time when video is playing
-  useEffect(() => {
-    if (!isPlaying) return;
-    const timer = setInterval(() => {
-      setPlaybackSeconds((s) => s + 1);
-    }, 1000);
-    return () => clearInterval(timer);
-  }, [isPlaying]);
 
   // Video metadata
   const [item, setItem] = useState<VideoDetailResponse | null>(null);
@@ -252,6 +252,49 @@ export default function WatchClient({ videoId, initialTitle }: WatchClientProps)
   }, []);
 
   // Play button click handler
+  const sendWatchProgress = useCallback((seconds: number) => {
+    if (!videoId) return;
+    const durSecs = parseDurationToSeconds(item?.duration) || 600;
+    fetch("/api/content/watch-progress", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        contentId: videoId,
+        provider: "youtube",
+        title: item?.title || initialTitle || "YouTube Video",
+        channelName: item?.creator || "YouTube Creator",
+        thumbnailUrl: thumbnail,
+        durationSeconds: durSecs,
+        progressSeconds: seconds,
+      }),
+    }).catch(() => {});
+  }, [videoId, item, initialTitle, thumbnail]);
+
+  // Track playback time when video is playing and periodically sync
+  useEffect(() => {
+    if (!isPlaying) return;
+    const timer = setInterval(() => {
+      setPlaybackSeconds((s) => {
+        const next = s + 1;
+        if (next > 0 && next % 15 === 0) {
+          sendWatchProgress(next);
+        }
+        return next;
+      });
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [isPlaying, sendWatchProgress]);
+
+  // Save progress on page leave / unmount
+  useEffect(() => {
+    return () => {
+      if (playbackSeconds > 0) {
+        sendWatchProgress(playbackSeconds);
+      }
+    };
+  }, [playbackSeconds, sendWatchProgress]);
+
+  // Play button click handler
   const handleStartPlay = () => {
     setIsPlaying(true);
     if (videoId) {
@@ -265,19 +308,7 @@ export default function WatchClient({ videoId, initialTitle }: WatchClientProps)
         playbackPosition: playbackSeconds,
       });
 
-      fetch("/api/content/watch-progress", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          contentId: videoId,
-          provider: "youtube",
-          title: item?.title || initialTitle || "YouTube Video",
-          channelName: item?.creator || "YouTube Creator",
-          thumbnailUrl: thumbnail,
-          durationSeconds: 900,
-          progressSeconds: 180,
-        }),
-      }).catch(() => {});
+      sendWatchProgress(playbackSeconds || 1);
     }
   };
 
@@ -716,9 +747,21 @@ export default function WatchClient({ videoId, initialTitle }: WatchClientProps)
                 )}
               </div>
 
-              {/* Action Buttons: Picture-in-Picture, Miniplayer, Like, Share, YouTube External, Three-Dot Menu */}
+              {/* Action Buttons: 4. Miniplayer, 5. PiP, 6. Like, 7. Share, 8. Three-Dot Menu */}
               <div className="video-action-buttons">
-                {/* 1. Picture-in-Picture Button */}
+                {/* 4. Floating Miniplayer Button */}
+                <button
+                  type="button"
+                  onClick={handleTriggerMiniplayer}
+                  className="btn btn-outline btn-sm watch-action-btn"
+                  title="Detached Floating Miniplayer"
+                  aria-label="Floating Miniplayer"
+                >
+                  <Minimize2 size={16} />
+                  <span className="action-label-desktop">Miniplayer</span>
+                </button>
+
+                {/* 5. Picture-in-Picture Button */}
                 <button
                   type="button"
                   onClick={handleTogglePip}
@@ -736,19 +779,7 @@ export default function WatchClient({ videoId, initialTitle }: WatchClientProps)
                   <span className="action-label-desktop">{isPipActive ? t("watch.pipActive") : t("watch.pip")}</span>
                 </button>
 
-                {/* 2. Floating Miniplayer Button */}
-                <button
-                  type="button"
-                  onClick={handleTriggerMiniplayer}
-                  className="btn btn-outline btn-sm watch-action-btn"
-                  title="Detached Floating Miniplayer"
-                  aria-label="Floating Miniplayer"
-                >
-                  <Minimize2 size={16} />
-                  <span className="action-label-desktop">Miniplayer</span>
-                </button>
-
-                {/* 3. Like Button */}
+                {/* 6. Like Button */}
                 <button
                   type="button"
                   onClick={handleToggleLike}
@@ -765,10 +796,10 @@ export default function WatchClient({ videoId, initialTitle }: WatchClientProps)
                   aria-label={isLiked ? "Unlike video" : "Like video"}
                 >
                   <ThumbsUp size={16} fill={isLiked ? "currentColor" : "none"} />
-                  <span>{isLiked ? (isYtConfirmed ? "Liked" : "Liked") : "Like"}</span>
+                  <span className="action-label-desktop">{isLiked ? (isYtConfirmed ? "Liked" : "Liked") : "Like"}</span>
                 </button>
 
-                {/* 4. Share Button */}
+                {/* 7. Share Button */}
                 <button
                   type="button"
                   onClick={handleShare}
@@ -780,20 +811,7 @@ export default function WatchClient({ videoId, initialTitle }: WatchClientProps)
                   <span className="action-label-desktop">Share</span>
                 </button>
 
-                {/* 5. Watch on YouTube External Link */}
-                <a
-                  href={`https://www.youtube.com/watch?v=${videoId}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="btn btn-outline btn-sm watch-action-btn"
-                  title="Watch directly on YouTube"
-                  aria-label="Open on YouTube"
-                >
-                  <span>YouTube</span>
-                  <ExternalLink size={14} />
-                </a>
-
-                {/* 6. Three-Dot Menu */}
+                {/* 8. Three-Dot Menu (Includes Watch on YouTube, Watchlist, Watch Later) */}
                 <div style={{ position: "relative" }}>
                   <button
                     ref={menuBtnRef}
@@ -809,6 +827,19 @@ export default function WatchClient({ videoId, initialTitle }: WatchClientProps)
 
                   {menuOpen && (
                     <div ref={menuRef} role="menu" className="watch-action-menu">
+                      {/* Watch on YouTube External Link */}
+                      <a
+                        href={`https://www.youtube.com/watch?v=${videoId}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        role="menuitem"
+                        className="menu-action-item"
+                        onClick={() => setMenuOpen(false)}
+                      >
+                        <ExternalLink size={16} />
+                        <span>Watch on YouTube</span>
+                      </a>
+
                       <button
                         type="button"
                         role="menuitem"
@@ -1245,21 +1276,83 @@ export default function WatchClient({ videoId, initialTitle }: WatchClientProps)
           100% { opacity: 1; transform: translateY(0); }
         }
 
-        @media (max-width: 640px) {
+        @media (max-width: 767px) {
           .action-label-desktop {
-            display: none;
+            display: none !important;
           }
           .watch-action-bar {
-            flex-direction: column;
-            align-items: flex-start;
+            display: flex !important;
+            flex-direction: row !important;
+            align-items: center !important;
+            justify-content: flex-start !important;
+            flex-wrap: nowrap !important;
+            overflow-x: auto !important;
+            -webkit-overflow-scrolling: touch !important;
+            scrollbar-width: none !important;
+            gap: 0.5rem !important;
+            width: 100% !important;
+            padding-bottom: 0.25rem !important;
+          }
+          .watch-action-bar::-webkit-scrollbar {
+            display: none !important;
           }
           .channel-profile-group {
-            width: 100%;
-            justify-content: space-between;
+            display: flex !important;
+            align-items: center !important;
+            gap: 0.5rem !important;
+            flex-shrink: 0 !important;
+            flex-wrap: nowrap !important;
+            width: auto !important;
+          }
+          .channel-profile-link {
+            gap: 0.5rem !important;
+          }
+          .channel-avatar-circle {
+            width: 36px !important;
+            height: 36px !important;
+            min-width: 36px !important;
+          }
+          .channel-names {
+            max-width: 90px !important;
+            overflow: hidden !important;
+          }
+          .channel-title {
+            font-size: 0.8125rem !important;
+            white-space: nowrap !important;
+            overflow: hidden !important;
+            text-overflow: ellipsis !important;
+          }
+          .channel-subs {
+            font-size: 0.6875rem !important;
+            white-space: nowrap !important;
+            overflow: hidden !important;
+            text-overflow: ellipsis !important;
+          }
+          .channel-sub-pill {
+            padding: 0.35rem 0.65rem !important;
+            font-size: 0.75rem !important;
+            flex-shrink: 0 !important;
+            white-space: nowrap !important;
           }
           .video-action-buttons {
-            width: 100%;
-            justify-content: space-between;
+            display: flex !important;
+            align-items: center !important;
+            gap: 0.35rem !important;
+            flex-shrink: 0 !important;
+            flex-wrap: nowrap !important;
+            width: auto !important;
+          }
+          .watch-action-btn {
+            padding: 0.4rem 0.5rem !important;
+            min-width: 34px !important;
+            height: 34px !important;
+            display: inline-flex !important;
+            align-items: center !important;
+            justify-content: center !important;
+          }
+          .watch-threedot-btn {
+            min-width: 34px !important;
+            min-height: 34px !important;
           }
         }
       `}</style>

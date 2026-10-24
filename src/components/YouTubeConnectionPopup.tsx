@@ -67,7 +67,7 @@ export function YouTubeConnectionPopup({ isOpen, onClose }: YouTubeConnectionPop
               Connect your YouTube account for a personalized experience
             </h3>
             <p id="yt-popup-desc" className="yt-popup-desc">
-              Connect to like videos directly on YouTube, sync watch activity, and access your subscriptions with total control.
+              Connect to like videos directly on YouTube and manage creator subscriptions. You can also connect anytime from Settings &rarr; YouTube Account.
             </p>
           </div>
         </div>

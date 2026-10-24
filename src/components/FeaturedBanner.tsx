@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { NormalizedContentItem } from "@/lib/types";
 import { Play, Plus, Check, ChevronLeft, ChevronRight } from "lucide-react";
+import { isInLocalWatchlist, toggleLocalWatchlist, STORAGE_CHANGE_EVENT } from "@/lib/local-storage";
 
 interface FeaturedBannerProps {
   items: NormalizedContentItem[];
@@ -18,10 +19,23 @@ export function FeaturedBanner({ items, onPlay, onToggleSave }: FeaturedBannerPr
     if (items.length > 0) {
       const initialMap: Record<string, boolean> = {};
       items.forEach((item) => {
-        if (item.saved) initialMap[item.id] = true;
+        initialMap[item.id] = isInLocalWatchlist(item.providerId) || Boolean(item.saved);
       });
       setSavedItems(initialMap);
     }
+
+    const handleStorageChange = () => {
+      if (items.length > 0) {
+        const nextMap: Record<string, boolean> = {};
+        items.forEach((item) => {
+          nextMap[item.id] = isInLocalWatchlist(item.providerId) || Boolean(item.saved);
+        });
+        setSavedItems(nextMap);
+      }
+    };
+
+    window.addEventListener(STORAGE_CHANGE_EVENT, handleStorageChange);
+    return () => window.removeEventListener(STORAGE_CHANGE_EVENT, handleStorageChange);
   }, [items]);
 
   if (!items || items.length === 0) return null;
@@ -39,7 +53,16 @@ export function FeaturedBanner({ items, onPlay, onToggleSave }: FeaturedBannerPr
 
   const handleWatchlistToggle = async (e: React.MouseEvent) => {
     e.stopPropagation();
-    const nextSaved = !isSaved;
+    const nextSaved = toggleLocalWatchlist({
+      videoId: currentItem.providerId,
+      title: currentItem.title,
+      thumbnailUrl: currentItem.thumbnail,
+      channelId: currentItem.channelId,
+      channelTitle: currentItem.creator,
+      category: currentItem.category,
+      duration: currentItem.duration,
+      views: currentItem.views,
+    });
     setSavedItems((prev) => ({ ...prev, [currentItem.id]: nextSaved }));
 
     try {
@@ -76,7 +99,6 @@ export function FeaturedBanner({ items, onPlay, onToggleSave }: FeaturedBannerPr
       }
     } catch (err) {
       console.error("Watchlist toggle error in banner:", err);
-      setSavedItems((prev) => ({ ...prev, [currentItem.id]: isSaved }));
     }
   };
 

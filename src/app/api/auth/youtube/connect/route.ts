@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getCurrentSession } from "@/lib/auth";
 import crypto from "node:crypto";
-import { getDb } from "@/lib/db";
 import { encryptSecret } from "@/lib/crypto";
+import { saveOAuthConnectionAsync } from "@/lib/data-service";
 
 export const dynamic = "force-dynamic";
 
@@ -26,35 +26,19 @@ export async function GET(request: NextRequest) {
       // In local dev without Google credentials, support mock connect for testing
       const isMock = requestUrl.searchParams.get("mock") === "true";
       if (isMock) {
-        const db = getDb();
         const encToken = encryptSecret("mock_yt_access_token_" + Date.now());
-        const id = crypto.randomUUID();
         const now = Date.now();
 
-        db.prepare(`
-          INSERT INTO oauth_connections (
-            id, user_id, provider, encrypted_access_token, iv, auth_tag,
-            expires_at, scope, channel_title, created_at, updated_at
-          ) VALUES (?, ?, 'youtube', ?, ?, ?, ?, ?, ?, ?, ?)
-          ON CONFLICT(user_id, provider) DO UPDATE SET
-            encrypted_access_token = excluded.encrypted_access_token,
-            iv = excluded.iv,
-            auth_tag = excluded.auth_tag,
-            expires_at = excluded.expires_at,
-            channel_title = excluded.channel_title,
-            updated_at = excluded.updated_at
-        `).run(
-          id,
-          session.user.id,
-          encToken.ciphertext,
-          encToken.iv,
-          encToken.authTag,
-          now + 3600 * 1000,
-          "https://www.googleapis.com/auth/youtube",
-          "Dev YouTube User",
-          now,
-          now
-        );
+        await saveOAuthConnectionAsync({
+          userId: session.user.id,
+          provider: "youtube",
+          encryptedAccessToken: encToken.ciphertext,
+          iv: encToken.iv,
+          authTag: encToken.authTag,
+          expiresAt: now + 3600 * 1000,
+          scope: "https://www.googleapis.com/auth/youtube",
+          channelTitle: "Dev YouTube User",
+        });
 
         return NextResponse.redirect(new URL("/settings?connected=youtube", requestUrl.origin));
       }

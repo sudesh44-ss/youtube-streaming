@@ -811,11 +811,25 @@ export async function updateUserProfile(userId: string, name: string): Promise<v
 // 6. RECOMMENDATION SIGNALS
 // ==========================================
 
+export interface WatchedVideoSummary {
+  contentId: string;
+  channelName: string;
+  durationSeconds: number;
+  progressPercent: number;
+  completed: boolean;
+  abandoned: boolean;
+  updatedAt: number;
+}
+
 export interface UserRecommendationSignals {
   preferredCategories: string[];
   savedCategoryCounts: Record<string, number>;
   recentSearchKeywords: string[];
   country?: string;
+  watchedVideos?: WatchedVideoSummary[];
+  topWatchedCreators?: Record<string, number>;
+  negativeContentIds?: string[];
+  likedContentIds?: string[];
 }
 
 export async function getUserRecommendationSignalsAsync(
@@ -825,14 +839,24 @@ export async function getUserRecommendationSignalsAsync(
   const savedCategoryCounts: Record<string, number> = {};
   let recentSearchKeywords: string[] = [];
   let country: string | undefined = undefined;
+  const watchedVideos: WatchedVideoSummary[] = [];
+  const topWatchedCreators: Record<string, number> = {};
+  let negativeContentIds: string[] = [];
+  let likedContentIds: string[] = [];
+
+  // 30-Day Activity Retention window cutoff
+  const retentionCutoffMs = Date.now() - 30 * 24 * 60 * 60 * 1000;
+  const retentionCutoffIso = new Date(retentionCutoffMs).toISOString();
 
   const supabase = await getSupabase();
   if (supabase && isUuid(userId)) {
     try {
-      const [prefRes, savedRes, searchRes] = await Promise.all([
-        supabase.from("user_preferences").select("preferred_categories, preferred_languages").eq("user_id", userId).maybeSingle(),
-        supabase.from("saved_content").select("category").eq("user_id", userId),
-        supabase.from("search_history").select("query").eq("user_id", userId).order("searched_at", { ascending: false }).limit(5),
+      const [prefRes, savedRes, searchRes, watchRes, feedbackRes] = await Promise.all([
+        supabase.from("user_preferences").select("preferred_categories, preferred_languages, country").eq("user_id", userId).maybeSingle(),
+        supabase.from("saved_content").select("category, content_id").eq("user_id", userId),
+        supabase.from("search_history").select("query").eq("user_id", userId).gte("searched_at", retentionCutoffIso).order("searched_at", { ascending: false }).limit(10),
+        supabase.from("watch_history").select("content_id, channel_name, duration_seconds, progress_seconds, progress_percent, completed, updated_at").eq("user_id", userId).gte("updated_at", retentionCutoffIso).order("updated_at", { ascending: false }).limit(40),
+        supabase.from("content_feedback").select("content_id, feedback_type").eq("user_id", userId),
       ]);
 
       if (!prefRes.error && prefRes.data?.preferred_categories) {
@@ -843,7 +867,9 @@ export async function getUserRecommendationSignalsAsync(
           : [];
       }
 
-      if (!prefRes.error && prefRes.data?.preferred_languages) {
+      if (!prefRes.error && prefRes.data?.country) {
+        country = prefRes.data.country.toUpperCase();
+      } else if (!prefRes.error && prefRes.data?.preferred_languages) {
         const raw = Array.isArray(prefRes.data.preferred_languages)
           ? prefRes.data.preferred_languages
           : typeof prefRes.data.preferred_languages === "string"
@@ -870,7 +896,50 @@ export async function getUserRecommendationSignalsAsync(
           .filter(Boolean);
       }
 
-      return { preferredCategories, savedCategoryCounts, recentSearchKeywords, country };
+      if (!watchRes.error && Array.isArray(watchRes.data)) {
+        for (const r of watchRes.data) {
+          const duration = Number(r.duration_seconds) || 0;
+          const progress = Number(r.progress_seconds) || 0;
+          const percent = Number(r.progress_percent) || 0;
+          const completed = Boolean(r.completed) || percent >= 85;
+          const abandoned = !completed && duration > 60 && percent < 10 && progress < 15;
+          const channel = (r.channel_name || "").trim();
+
+          watchedVideos.push({
+            contentId: r.content_id,
+            channelName: channel,
+            durationSeconds: duration,
+            progressPercent: percent,
+            completed,
+            abandoned,
+            updatedAt: typeof r.updated_at === "string" ? new Date(r.updated_at).getTime() : Date.now(),
+          });
+
+          if (channel) {
+            topWatchedCreators[channel] = (topWatchedCreators[channel] || 0) + (completed ? 3 : abandoned ? 0 : 1);
+          }
+        }
+      }
+
+      if (!feedbackRes.error && Array.isArray(feedbackRes.data)) {
+        negativeContentIds = feedbackRes.data
+          .filter((f: any) => f.feedback_type === "not_interested" || f.feedback_type === "dislike")
+          .map((f: any) => f.content_id);
+        likedContentIds = feedbackRes.data
+          .filter((f: any) => f.feedback_type === "like")
+          .map((f: any) => f.content_id);
+      }
+
+      return {
+        preferredCategories,
+        savedCategoryCounts,
+        recentSearchKeywords,
+        country,
+        watchedVideos,
+        topWatchedCreators,
+        negativeContentIds,
+        likedContentIds,
+      };
     } catch (e) {
       console.warn("Supabase recommendation signals warning:", e);
     }
@@ -901,13 +970,54 @@ export async function getUserRecommendationSignalsAsync(
       savedCategoryCounts[row.category] = (savedCategoryCounts[row.category] || 0) + 1;
     }
 
-    const searchRows = db.prepare("SELECT query FROM search_history WHERE user_id = ? ORDER BY searched_at DESC LIMIT 5").all(userId) as any[];
+    const searchRows = db.prepare("SELECT query FROM search_history WHERE user_id = ? AND searched_at >= ? ORDER BY searched_at DESC LIMIT 10").all(userId, retentionCutoffMs) as any[];
     recentSearchKeywords = searchRows.map((r) => r.query.toLowerCase());
+
+    const watchRows = db.prepare("SELECT content_id, channel_name, duration_seconds, progress_seconds, progress_percent, completed, updated_at FROM watch_history WHERE user_id = ? AND updated_at >= ? ORDER BY updated_at DESC LIMIT 40").all(userId, retentionCutoffMs) as any[];
+    for (const r of watchRows) {
+      const duration = Number(r.duration_seconds) || 0;
+      const progress = Number(r.progress_seconds) || 0;
+      const percent = Number(r.progress_percent) || 0;
+      const completed = Boolean(r.completed) || percent >= 85;
+      const abandoned = !completed && duration > 60 && percent < 10 && progress < 15;
+      const channel = (r.channel_name || "").trim();
+
+      watchedVideos.push({
+        contentId: r.content_id,
+        channelName: channel,
+        durationSeconds: duration,
+        progressPercent: percent,
+        completed,
+        abandoned,
+        updatedAt: Number(r.updated_at) || Date.now(),
+      });
+
+      if (channel) {
+        topWatchedCreators[channel] = (topWatchedCreators[channel] || 0) + (completed ? 3 : abandoned ? 0 : 1);
+      }
+    }
+
+    const feedbackRows = db.prepare("SELECT content_id, feedback_type FROM content_feedback WHERE user_id = ?").all(userId) as any[];
+    negativeContentIds = feedbackRows
+      .filter((f) => f.feedback_type === "not_interested" || f.feedback_type === "dislike")
+      .map((f) => f.content_id);
+    likedContentIds = feedbackRows
+      .filter((f) => f.feedback_type === "like")
+      .map((f) => f.content_id);
   } catch {
     // Non-fatal
   }
 
-  return { preferredCategories, savedCategoryCounts, recentSearchKeywords, country };
+  return {
+    preferredCategories,
+    savedCategoryCounts,
+    recentSearchKeywords,
+    country,
+    watchedVideos,
+    topWatchedCreators,
+    negativeContentIds,
+    likedContentIds,
+  };
 }
 
 // ==========================================
@@ -1024,5 +1134,208 @@ export async function getOAuthConnectionAsync(
   }
 
   return null;
+}
+
+export interface SaveOAuthConnectionParams {
+  userId: string;
+  provider: string;
+  encryptedAccessToken: string;
+  iv: string;
+  authTag: string;
+  encryptedRefreshToken?: string | null;
+  refreshIv?: string | null;
+  refreshAuthTag?: string | null;
+  expiresAt?: number | null;
+  scope?: string | null;
+  channelId?: string | null;
+  channelTitle?: string | null;
+}
+
+export async function saveOAuthConnectionAsync(params: SaveOAuthConnectionParams): Promise<void> {
+  const {
+    userId,
+    provider,
+    encryptedAccessToken,
+    iv,
+    authTag,
+    encryptedRefreshToken,
+    refreshIv,
+    refreshAuthTag,
+    expiresAt,
+    scope,
+    channelId,
+    channelTitle,
+  } = params;
+
+  const now = Date.now();
+  const isoNow = new Date(now).toISOString();
+
+  // 1. Supabase persistence
+  const supabase = await getSupabase();
+  if (supabase && isUuid(userId)) {
+    try {
+      await supabase.from("oauth_connections").upsert(
+        {
+          user_id: userId,
+          provider,
+          encrypted_access_token: encryptedAccessToken,
+          iv,
+          auth_tag: authTag,
+          encrypted_refresh_token: encryptedRefreshToken || null,
+          refresh_iv: refreshIv || null,
+          refresh_auth_tag: refreshAuthTag || null,
+          expires_at: expiresAt || null,
+          scope: scope || null,
+          channel_id: channelId || null,
+          channel_title: channelTitle || "Connected YouTube Account",
+          updated_at: isoNow,
+        },
+        { onConflict: "user_id,provider" }
+      );
+    } catch (err) {
+      console.warn("Supabase saveOAuthConnectionAsync warning:", err);
+    }
+  }
+
+  // 2. SQLite persistence
+  try {
+    const db = getDb();
+    const connId = crypto.randomUUID();
+    db.prepare(`
+      INSERT INTO oauth_connections (
+        id, user_id, provider, encrypted_access_token, iv, auth_tag,
+        encrypted_refresh_token, refresh_iv, refresh_auth_tag,
+        expires_at, scope, channel_id, channel_title, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(user_id, provider) DO UPDATE SET
+        encrypted_access_token = excluded.encrypted_access_token,
+        iv = excluded.iv,
+        auth_tag = excluded.auth_tag,
+        encrypted_refresh_token = COALESCE(excluded.encrypted_refresh_token, oauth_connections.encrypted_refresh_token),
+        refresh_iv = COALESCE(excluded.refresh_iv, oauth_connections.refresh_iv),
+        refresh_auth_tag = COALESCE(excluded.refresh_auth_tag, oauth_connections.refresh_auth_tag),
+        expires_at = excluded.expires_at,
+        scope = excluded.scope,
+        channel_id = COALESCE(excluded.channel_id, oauth_connections.channel_id),
+        channel_title = excluded.channel_title,
+        updated_at = excluded.updated_at
+    `).run(
+      connId,
+      userId,
+      provider,
+      encryptedAccessToken,
+      iv,
+      authTag,
+      encryptedRefreshToken || null,
+      refreshIv || null,
+      refreshAuthTag || null,
+      expiresAt || null,
+      scope || null,
+      channelId || null,
+      channelTitle || "Connected YouTube Account",
+      now,
+      now
+    );
+  } catch (err) {
+    console.warn("SQLite saveOAuthConnection warning:", err);
+  }
+}
+
+export async function deleteOAuthConnectionAsync(userId: string, provider: string = "youtube"): Promise<void> {
+  const supabase = await getSupabase();
+  if (supabase && isUuid(userId)) {
+    try {
+      await supabase
+        .from("oauth_connections")
+        .delete()
+        .eq("user_id", userId)
+        .eq("provider", provider);
+    } catch (err) {
+      console.warn("Supabase deleteOAuthConnectionAsync warning:", err);
+    }
+  }
+
+  try {
+    const db = getDb();
+    db.prepare("DELETE FROM oauth_connections WHERE user_id = ? AND provider = ?").run(userId, provider);
+  } catch {
+    // Non-fatal
+  }
+}
+
+// ==========================================
+// 10. CONTENT FEEDBACK (NOT INTERESTED / LIKE)
+// ==========================================
+
+export async function recordContentFeedbackAsync(
+  userId: string,
+  contentId: string,
+  feedbackType: "not_interested" | "like" | "dislike"
+): Promise<void> {
+  const now = Date.now();
+  const isoNow = new Date(now).toISOString();
+
+  const supabase = await getSupabase();
+  if (supabase && isUuid(userId)) {
+    try {
+      await supabase.from("content_feedback").upsert(
+        {
+          user_id: userId,
+          content_id: contentId,
+          feedback_type: feedbackType,
+          created_at: isoNow,
+        },
+        { onConflict: "user_id,content_id,feedback_type" }
+      );
+    } catch (err) {
+      console.warn("Supabase recordContentFeedback warning:", err);
+    }
+  }
+
+  try {
+    const db = getDb();
+    const id = crypto.randomUUID();
+    db.prepare(`
+      INSERT INTO content_feedback (id, user_id, content_id, feedback_type, created_at)
+      VALUES (?, ?, ?, ?, ?)
+      ON CONFLICT(user_id, content_id, feedback_type) DO UPDATE SET created_at = excluded.created_at
+    `).run(id, userId, contentId, feedbackType, now);
+  } catch {
+    // Non-fatal
+  }
+}
+
+export async function getContentFeedbackAsync(
+  userId: string,
+  feedbackType?: "not_interested" | "like" | "dislike"
+): Promise<string[]> {
+  const supabase = await getSupabase();
+  if (supabase && isUuid(userId)) {
+    try {
+      let query = supabase.from("content_feedback").select("content_id").eq("user_id", userId);
+      if (feedbackType) {
+        query = query.eq("feedback_type", feedbackType);
+      }
+      const { data, error } = await query;
+      if (!error && Array.isArray(data)) {
+        return data.map((d: any) => d.content_id).filter(Boolean);
+      }
+    } catch {
+      // Fallback
+    }
+  }
+
+  try {
+    const db = getDb();
+    let rows: any[];
+    if (feedbackType) {
+      rows = db.prepare("SELECT content_id FROM content_feedback WHERE user_id = ? AND feedback_type = ?").all(userId, feedbackType);
+    } else {
+      rows = db.prepare("SELECT content_id FROM content_feedback WHERE user_id = ?").all(userId);
+    }
+    return rows.map((r: any) => r.content_id).filter(Boolean);
+  } catch {
+    return [];
+  }
 }
 

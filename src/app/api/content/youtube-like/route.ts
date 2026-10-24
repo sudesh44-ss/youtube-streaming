@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getCurrentSession } from "@/lib/auth";
-import { getOAuthConnectionAsync } from "@/lib/data-service";
+import { getOAuthConnectionAsync, recordContentFeedbackAsync } from "@/lib/data-service";
 
 export const dynamic = "force-dynamic";
 
@@ -23,6 +23,10 @@ export async function POST(request: NextRequest) {
           ? "Saved to your Liked videos (Local preference)"
           : "Removed from Liked videos",
       });
+    }
+
+    if (rating === "like") {
+      recordContentFeedbackAsync(session.user.id, videoId, "like").catch(() => {});
     }
 
     const conn = await getOAuthConnectionAsync(session.user.id, "youtube");

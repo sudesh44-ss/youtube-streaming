@@ -3,6 +3,7 @@ import { getCurrentSession } from "@/lib/auth";
 import { getUserProviderKeyAsync, getOAuthConnectionAsync } from "@/lib/data-service";
 import { appCache, CACHE_TTLS } from "@/lib/cache-service";
 import { NormalizedContentItem } from "@/lib/types";
+import { parseIsoDuration, formatViewCount } from "@/lib/format-utils";
 
 export const dynamic = "force-dynamic";
 
@@ -21,6 +22,7 @@ export async function GET(req: NextRequest) {
     const { searchParams } = new URL(req.url);
     const channelId = searchParams.get("id")?.trim() || "";
     const pageToken = searchParams.get("pageToken")?.trim() || "";
+    const tab = (searchParams.get("tab")?.trim().toLowerCase() as "all" | "videos" | "shorts") || "all";
 
     if (!channelId) {
       return NextResponse.json({ error: "channelId is required" }, { status: 400 });
@@ -117,6 +119,41 @@ export async function GET(req: NextRequest) {
       }
     }
 
+    // Helper to batch-enrich video items with duration, view count, and Shorts classification
+    async function enrichVideoDetails(videoIds: string[], key: string) {
+      const detailsMap = new Map<string, { duration?: string; views?: string; isShort: boolean }>();
+      if (!videoIds.length) return detailsMap;
+      try {
+        const vUrl = `https://www.googleapis.com/youtube/v3/videos?part=contentDetails,statistics,snippet&id=${encodeURIComponent(
+          videoIds.join(",")
+        )}&key=${encodeURIComponent(key)}`;
+        const vRes = await fetch(vUrl, { signal: AbortSignal.timeout(5000) });
+        if (vRes.ok) {
+          const vData = await vRes.json();
+          if (Array.isArray(vData.items)) {
+            for (const vIt of vData.items) {
+              const durIso = vIt.contentDetails?.duration;
+              const { formatted, totalSeconds } = parseIsoDuration(durIso);
+              const views = formatViewCount(vIt.statistics?.viewCount);
+              const titleText = `${vIt.snippet?.title || ""} ${vIt.snippet?.description || ""}`.toLowerCase();
+              const isShort =
+                (totalSeconds > 0 && totalSeconds <= 60) ||
+                titleText.includes("#shorts") ||
+                titleText.includes("#short");
+              detailsMap.set(vIt.id, {
+                duration: formatted || undefined,
+                views: views || undefined,
+                isShort,
+              });
+            }
+          }
+        }
+      } catch {
+        // Non-blocking enrichment
+      }
+      return detailsMap;
+    }
+
     // 3. Fetch channel uploads paginated strictly at 10 videos per request
     let uploads: NormalizedContentItem[] = [];
     let nextPageToken: string | undefined = undefined;
@@ -134,33 +171,47 @@ export async function GET(req: NextRequest) {
         nextPageToken = pData.nextPageToken;
 
         if (Array.isArray(pData.items)) {
-          uploads = pData.items
-            .filter((item: any) => item.snippet?.title !== "Private video" && item.snippet?.title !== "Deleted video")
-            .map((item: any) => {
-              const videoId = item.contentDetails?.videoId || item.snippet?.resourceId?.videoId;
-              return {
-                id: `youtube:${videoId}`,
-                provider: "youtube" as const,
-                providerId: videoId,
-                contentType: "video" as const,
-                title: item.snippet?.title || "Video",
-                description: item.snippet?.description || "",
-                thumbnail:
-                  item.snippet?.thumbnails?.high?.url ||
-                  item.snippet?.thumbnails?.medium?.url ||
-                  `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`,
-                category: "general",
-                publicationDate: item.snippet?.publishedAt,
-                creator: channelMeta.title,
-                channelId: channelId,
-                channelAvatar: channelMeta.avatar,
-                externalUrl: `https://www.youtube.com/watch?v=${videoId}`,
-                playbackMethod: "iframe_embed" as const,
-                embedUrl: `https://www.youtube.com/embed/${videoId}`,
-                providerAttribution: "YouTube",
-                availabilityStatus: "available" as const,
-              };
-            });
+          const validItems = pData.items.filter(
+            (item: any) => item.snippet?.title !== "Private video" && item.snippet?.title !== "Deleted video"
+          );
+          const videoIds = validItems
+            .map((item: any) => item.contentDetails?.videoId || item.snippet?.resourceId?.videoId)
+            .filter(Boolean);
+
+          const detailsMap = await enrichVideoDetails(videoIds, apiKey.trim());
+
+          uploads = validItems.map((item: any) => {
+            const videoId = item.contentDetails?.videoId || item.snippet?.resourceId?.videoId;
+            const detail = detailsMap.get(videoId);
+            const titleText = `${item.snippet?.title || ""} ${item.snippet?.description || ""}`.toLowerCase();
+            const isShort = detail ? detail.isShort : titleText.includes("#shorts") || titleText.includes("#short");
+
+            return {
+              id: `youtube:${videoId}`,
+              provider: "youtube" as const,
+              providerId: videoId,
+              contentType: "video" as const,
+              title: item.snippet?.title || "Video",
+              description: item.snippet?.description || "",
+              thumbnail:
+                item.snippet?.thumbnails?.high?.url ||
+                item.snippet?.thumbnails?.medium?.url ||
+                `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`,
+              category: "general",
+              publicationDate: item.snippet?.publishedAt,
+              creator: channelMeta.title,
+              channelId: channelId,
+              channelAvatar: channelMeta.avatar,
+              duration: detail?.duration,
+              views: detail?.views,
+              isShort,
+              externalUrl: `https://www.youtube.com/watch?v=${videoId}`,
+              playbackMethod: "iframe_embed" as const,
+              embedUrl: `https://www.youtube.com/embed/${videoId}`,
+              providerAttribution: "YouTube",
+              availabilityStatus: "available" as const,
+            };
+          });
         }
       }
     } else {
@@ -176,30 +227,50 @@ export async function GET(req: NextRequest) {
         const sData = await sRes.json();
         nextPageToken = sData.nextPageToken;
         if (Array.isArray(sData.items)) {
-          uploads = sData.items.map((item: any) => ({
-            id: `youtube:${item.id?.videoId}`,
-            provider: "youtube" as const,
-            providerId: item.id?.videoId,
-            contentType: "video" as const,
-            title: item.snippet?.title || "Video",
-            description: item.snippet?.description || "",
-            thumbnail:
-              item.snippet?.thumbnails?.high?.url ||
-              item.snippet?.thumbnails?.medium?.url ||
-              `https://i.ytimg.com/vi/${item.id?.videoId}/hqdefault.jpg`,
-            category: "general",
-            publicationDate: item.snippet?.publishedAt,
-            creator: channelMeta.title,
-            channelId: channelId,
-            channelAvatar: channelMeta.avatar,
-            externalUrl: `https://www.youtube.com/watch?v=${item.id?.videoId}`,
-            playbackMethod: "iframe_embed" as const,
-            embedUrl: `https://www.youtube.com/embed/${item.id?.videoId}`,
-            providerAttribution: "YouTube",
-            availabilityStatus: "available" as const,
-          }));
+          const videoIds = sData.items.map((it: any) => it.id?.videoId).filter(Boolean);
+          const detailsMap = await enrichVideoDetails(videoIds, apiKey.trim());
+
+          uploads = sData.items.map((item: any) => {
+            const videoId = item.id?.videoId;
+            const detail = detailsMap.get(videoId);
+            const titleText = `${item.snippet?.title || ""} ${item.snippet?.description || ""}`.toLowerCase();
+            const isShort = detail ? detail.isShort : titleText.includes("#shorts") || titleText.includes("#short");
+
+            return {
+              id: `youtube:${videoId}`,
+              provider: "youtube" as const,
+              providerId: videoId,
+              contentType: "video" as const,
+              title: item.snippet?.title || "Video",
+              description: item.snippet?.description || "",
+              thumbnail:
+                item.snippet?.thumbnails?.high?.url ||
+                item.snippet?.thumbnails?.medium?.url ||
+                `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`,
+              category: "general",
+              publicationDate: item.snippet?.publishedAt,
+              creator: channelMeta.title,
+              channelId: channelId,
+              channelAvatar: channelMeta.avatar,
+              duration: detail?.duration,
+              views: detail?.views,
+              isShort,
+              externalUrl: `https://www.youtube.com/watch?v=${videoId}`,
+              playbackMethod: "iframe_embed" as const,
+              embedUrl: `https://www.youtube.com/embed/${videoId}`,
+              providerAttribution: "YouTube",
+              availabilityStatus: "available" as const,
+            };
+          });
         }
       }
+    }
+
+    // Filter by tab if requested
+    if (tab === "shorts") {
+      uploads = uploads.filter((item) => item.isShort);
+    } else if (tab === "videos") {
+      uploads = uploads.filter((item) => !item.isShort);
     }
 
     return NextResponse.json({

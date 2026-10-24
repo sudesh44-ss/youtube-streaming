@@ -11,6 +11,7 @@ import {
   toggleLocalWatchLater,
   STORAGE_CHANGE_EVENT,
 } from "@/lib/local-storage";
+import { formatUploadAge, formatViewCount } from "@/lib/format-utils";
 
 interface ContentCardProps {
   item: NormalizedContentItem;
@@ -155,6 +156,8 @@ export function ContentCard({ item, onSelect, onToggleSave, showProgress }: Cont
   const viewsText = item.views || "1.8M views";
   const channelInitial = (item.creator || "O").charAt(0).toUpperCase();
   const isSavedAny = inWatchlist || inWatchLater;
+  const formattedViews = formatViewCount(item.views);
+  const uploadAge = formatUploadAge(item.publicationDate);
 
   return (
     <div
@@ -276,78 +279,30 @@ export function ContentCard({ item, onSelect, onToggleSave, showProgress }: Cont
         )}
       </div>
 
-      {/* Metadata Row */}
+      {/* Card Info Container */}
       <div
         style={{
-          display: "flex",
-          alignItems: "flex-start",
-          gap: "0.75rem",
           paddingTop: "0.75rem",
-          position: "relative",
+          display: "flex",
+          flexDirection: "column",
+          gap: "0.35rem",
         }}
       >
-        {/* Channel Avatar */}
+        {/* Row 1: Video Title + Action Menu */}
         <div
           style={{
-            width: "38px",
-            height: "38px",
-            borderRadius: "50%",
-            overflow: "hidden",
-            flexShrink: 0,
-            marginTop: "2px",
-            backgroundColor: "var(--bg-surface-elevated)",
-            border: "1px solid var(--border-color)",
             display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            position: "relative",
+            alignItems: "flex-start",
+            justifyContent: "space-between",
+            gap: "0.5rem",
           }}
         >
-          {item.channelAvatar ? (
-            <img
-              src={item.channelAvatar}
-              alt={item.creator ? `${item.creator}'s channel avatar` : "Channel avatar"}
-              loading="lazy"
-              style={{
-                width: "100%",
-                height: "100%",
-                objectFit: "cover",
-                borderRadius: "50%",
-              }}
-              onError={(e) => {
-                e.currentTarget.style.display = "none";
-                const fallback = e.currentTarget.parentElement?.querySelector(".avatar-fallback") as HTMLElement;
-                if (fallback) fallback.style.display = "flex";
-              }}
-            />
-          ) : null}
-          <div
-            className="avatar-fallback"
-            style={{
-              width: "100%",
-              height: "100%",
-              borderRadius: "50%",
-              background: "linear-gradient(135deg, #38bdf8, #2563eb)",
-              color: "#fff",
-              display: item.channelAvatar ? "none" : "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              fontSize: "0.875rem",
-              fontWeight: 700,
-            }}
-          >
-            {channelInitial}
-          </div>
-        </div>
-
-        {/* Title & Stats */}
-        <div style={{ flex: 1, minWidth: 0 }}>
           <h3
             title={item.title}
             style={{
               fontSize: "0.9375rem",
               fontWeight: 600,
-              lineHeight: 1.4,
+              lineHeight: 1.35,
               color: "var(--text-main)",
               margin: 0,
               display: "-webkit-box",
@@ -355,127 +310,233 @@ export function ContentCard({ item, onSelect, onToggleSave, showProgress }: Cont
               WebkitBoxOrient: "vertical",
               overflow: "hidden",
               wordBreak: "break-word",
+              flex: 1,
             }}
           >
             {item.title}
           </h3>
 
-          <p
-            style={{
-              fontSize: "0.8125rem",
-              color: "var(--text-muted)",
-              margin: "0.25rem 0 0",
-              whiteSpace: "nowrap",
-              overflow: "hidden",
-              textOverflow: "ellipsis",
-            }}
-          >
-            {item.creator || "YouTube Creator"}
-          </p>
+          {/* Action Menu Trigger Button */}
+          <div ref={menuRef} style={{ position: "relative", flexShrink: 0 }}>
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                setShowMenu(!showMenu);
+              }}
+              aria-label="Video actions"
+              className="btn btn-outline btn-sm"
+              style={{
+                padding: "0.25rem",
+                border: "none",
+                background: "transparent",
+                color: isSavedAny ? "var(--primary)" : "var(--text-dim)",
+                borderRadius: "4px",
+                cursor: "pointer",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+              }}
+            >
+              {isSavedAny ? <Check size={16} /> : <MoreVertical size={16} />}
+            </button>
 
-          <p
+            {/* Contextual Action Menu: Watchlist & Watch Later */}
+            {showMenu && (
+              <div
+                style={{
+                  position: "absolute",
+                  top: "100%",
+                  right: 0,
+                  zIndex: 40,
+                  backgroundColor: "var(--bg-surface)",
+                  border: "1px solid var(--border-color)",
+                  borderRadius: "var(--radius-md)",
+                  boxShadow: "0 6px 20px rgba(0,0,0,0.45)",
+                  padding: "0.375rem",
+                  minWidth: "165px",
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: "0.25rem",
+                }}
+              >
+                <button
+                  type="button"
+                  onClick={handleToggleWatchlist}
+                  style={{
+                    width: "100%",
+                    textAlign: "left",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "0.5rem",
+                    padding: "0.45rem 0.5rem",
+                    fontSize: "0.75rem",
+                    backgroundColor: "transparent",
+                    border: "none",
+                    color: inWatchlist ? "var(--primary)" : "var(--text-main)",
+                    borderRadius: "var(--radius-sm)",
+                    cursor: "pointer",
+                    fontWeight: inWatchlist ? 600 : 500,
+                  }}
+                >
+                  {inWatchlist ? <Check size={14} /> : <Bookmark size={14} />}
+                  <span>{inWatchlist ? "In Watchlist" : "Add to Watchlist"}</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handleToggleWatchLater}
+                  style={{
+                    width: "100%",
+                    textAlign: "left",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "0.5rem",
+                    padding: "0.45rem 0.5rem",
+                    fontSize: "0.75rem",
+                    backgroundColor: "transparent",
+                    border: "none",
+                    color: inWatchLater ? "var(--primary)" : "var(--text-main)",
+                    borderRadius: "var(--radius-sm)",
+                    cursor: "pointer",
+                    fontWeight: inWatchLater ? 600 : 500,
+                  }}
+                >
+                  {inWatchLater ? <Check size={14} /> : <Clock size={14} />}
+                  <span>{inWatchLater ? "In Watch Later" : "Watch Later"}</span>
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Row 2: Creator Metadata Row: [Avatar] Creator · views · upload age */}
+        <div
+          className="card-meta-line"
+          style={{
+            display: "flex",
+            alignItems: "center",
+            flexWrap: "wrap",
+            gap: "0.35rem 0.45rem",
+            fontSize: "0.75rem",
+            color: "var(--text-dim)",
+            lineHeight: 1.3,
+            marginTop: "0.15rem",
+          }}
+        >
+          <div
+            className={`card-creator-group ${item.channelId ? "clickable" : "non-clickable"}`}
+            onClick={(e) => {
+              if (item.channelId) {
+                e.stopPropagation();
+                router.push(`/channel/${encodeURIComponent(item.channelId)}`);
+              }
+            }}
+            role={item.channelId ? "button" : undefined}
+            tabIndex={item.channelId ? 0 : undefined}
+            onKeyDown={(e) => {
+              if (item.channelId && (e.key === "Enter" || e.key === " ")) {
+                e.stopPropagation();
+                e.preventDefault();
+                router.push(`/channel/${encodeURIComponent(item.channelId)}`);
+              }
+            }}
+            title={item.channelId ? `View ${item.creator || "creator"}'s channel` : undefined}
             style={{
-              fontSize: "0.75rem",
-              color: "var(--text-dim)",
-              margin: "0.15rem 0 0",
+              display: "inline-flex",
+              alignItems: "center",
+              gap: "0.35rem",
+              color: "var(--text-muted)",
+              cursor: item.channelId ? "pointer" : "default",
+              maxWidth: "100%",
             }}
           >
-            {showProgress || item.progressPercent ? (
+            <div
+              className="card-avatar-wrap"
+              style={{
+                width: "20px",
+                height: "20px",
+                borderRadius: "50%",
+                overflow: "hidden",
+                backgroundColor: "var(--bg-surface-elevated)",
+                border: "1px solid var(--border-color)",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                flexShrink: 0,
+              }}
+            >
+              {item.channelAvatar ? (
+                <img
+                  src={item.channelAvatar}
+                  alt={item.creator ? `${item.creator}'s channel avatar` : "Channel avatar"}
+                  loading="lazy"
+                  style={{
+                    width: "100%",
+                    height: "100%",
+                    objectFit: "cover",
+                    borderRadius: "50%",
+                  }}
+                  onError={(e) => {
+                    e.currentTarget.style.display = "none";
+                    const fallback = e.currentTarget.parentElement?.querySelector(".card-avatar-fallback") as HTMLElement;
+                    if (fallback) fallback.style.display = "flex";
+                  }}
+                />
+              ) : null}
+              <div
+                className="card-avatar-fallback"
+                style={{
+                  width: "100%",
+                  height: "100%",
+                  borderRadius: "50%",
+                  background: "linear-gradient(135deg, #38bdf8, #2563eb)",
+                  color: "#fff",
+                  display: item.channelAvatar ? "none" : "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  fontSize: "0.625rem",
+                  fontWeight: 700,
+                }}
+              >
+                {channelInitial}
+              </div>
+            </div>
+
+            <span
+              className="card-channel-name"
+              style={{
+                fontSize: "0.75rem",
+                color: "var(--text-muted)",
+                whiteSpace: "nowrap",
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                maxWidth: "180px",
+              }}
+            >
+              {item.creator || "YouTube Creator"}
+            </span>
+          </div>
+
+          {/* Views and Upload Age */}
+          {showProgress || item.progressPercent ? (
+            <>
+              <span className="card-dot" style={{ color: "var(--text-dim)", fontSize: "0.75rem" }}>·</span>
               <span style={{ color: "#f87171", fontWeight: 500 }}>
                 {item.progressPercent || 35}% watched
               </span>
-            ) : (
-              <span>{viewsText} • {getDisplayTime()}</span>
-            )}
-          </p>
-        </div>
-
-        {/* Action Menu Trigger Button */}
-        <div ref={menuRef} style={{ position: "relative" }}>
-          <button
-            type="button"
-            onClick={(e) => {
-              e.stopPropagation();
-              setShowMenu(!showMenu);
-            }}
-            aria-label="Video actions"
-            className="btn btn-outline btn-sm"
-            style={{
-              padding: "0.25rem",
-              border: "none",
-              background: "transparent",
-              color: isSavedAny ? "var(--primary)" : "var(--text-dim)",
-              borderRadius: "4px",
-            }}
-          >
-            {isSavedAny ? <Check size={16} /> : <MoreVertical size={16} />}
-          </button>
-
-          {/* Contextual Action Menu: Watchlist & Watch Later */}
-          {showMenu && (
-            <div
-              style={{
-                position: "absolute",
-                top: "100%",
-                right: 0,
-                zIndex: 40,
-                backgroundColor: "var(--bg-surface)",
-                border: "1px solid var(--border-color)",
-                borderRadius: "var(--radius-md)",
-                boxShadow: "0 6px 20px rgba(0,0,0,0.45)",
-                padding: "0.375rem",
-                minWidth: "165px",
-                display: "flex",
-                flexDirection: "column",
-                gap: "0.25rem",
-              }}
-            >
-              <button
-                type="button"
-                onClick={handleToggleWatchlist}
-                style={{
-                  width: "100%",
-                  textAlign: "left",
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "0.5rem",
-                  padding: "0.45rem 0.5rem",
-                  fontSize: "0.75rem",
-                  backgroundColor: "transparent",
-                  border: "none",
-                  color: inWatchlist ? "var(--primary)" : "var(--text-main)",
-                  borderRadius: "var(--radius-sm)",
-                  cursor: "pointer",
-                  fontWeight: inWatchlist ? 600 : 500,
-                }}
-              >
-                {inWatchlist ? <Check size={14} /> : <Bookmark size={14} />}
-                <span>{inWatchlist ? "In Watchlist" : "Add to Watchlist"}</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={handleToggleWatchLater}
-                style={{
-                  width: "100%",
-                  textAlign: "left",
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "0.5rem",
-                  padding: "0.45rem 0.5rem",
-                  fontSize: "0.75rem",
-                  backgroundColor: "transparent",
-                  border: "none",
-                  color: inWatchLater ? "var(--primary)" : "var(--text-main)",
-                  borderRadius: "var(--radius-sm)",
-                  cursor: "pointer",
-                  fontWeight: inWatchLater ? 600 : 500,
-                }}
-              >
-                {inWatchLater ? <Check size={14} /> : <Clock size={14} />}
-                <span>{inWatchLater ? "In Watch Later" : "Watch Later"}</span>
-              </button>
-            </div>
+            </>
+          ) : (
+            <>
+              {(formattedViews || uploadAge) && (
+                <span className="card-dot" style={{ color: "var(--text-dim)", fontSize: "0.75rem" }}>·</span>
+              )}
+              {formattedViews && <span>{formattedViews}</span>}
+              {formattedViews && uploadAge && (
+                <span className="card-dot" style={{ color: "var(--text-dim)", fontSize: "0.75rem" }}>·</span>
+              )}
+              {uploadAge && <span>{uploadAge}</span>}
+            </>
           )}
         </div>
       </div>
@@ -486,6 +547,11 @@ export function ContentCard({ item, onSelect, onToggleSave, showProgress }: Cont
         }
         .streaming-video-card:focus-visible {
           box-shadow: 0 0 0 2px var(--primary);
+        }
+        .creator-channel-link:hover,
+        .card-creator-group.clickable:hover .card-channel-name {
+          color: var(--primary) !important;
+          text-decoration: underline;
         }
       `}</style>
     </div>

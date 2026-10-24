@@ -44,8 +44,9 @@ export async function GET(req: NextRequest) {
       return res;
     }
 
-    // Cache key incorporates all personalization and filtering dimensions
+    // Cache key incorporates user ID and all personalization/filtering dimensions
     const cacheKey = buildRecCacheKey({
+      userId: session?.user?.id,
       category,
       subcategory,
       mode,
