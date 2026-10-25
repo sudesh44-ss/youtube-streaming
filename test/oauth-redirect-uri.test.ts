@@ -14,11 +14,11 @@ console.log("=== Testing OmniDiscover OAuth Configuration & Redirect URI Safety 
 
 // 1. Verify Constants and Canonical Paths
 console.log("\n1. Testing OAuth Constants & Canonical Paths...");
-assert.strictEqual(PRODUCTION_BASE_URL, "https://youtube-streaming-ten.vercel.app");
+assert.strictEqual(PRODUCTION_BASE_URL, "https://tubify.sudeshcreation.shop");
 assert.strictEqual(YOUTUBE_OAUTH_CALLBACK_PATH, "/api/auth/youtube/callback");
 assert.strictEqual(
   CANONICAL_PRODUCTION_REDIRECT_URI,
-  "https://youtube-streaming-ten.vercel.app/api/auth/youtube/callback",
+  "https://tubify.sudeshcreation.shop/api/auth/youtube/callback",
   "Canonical production redirect URI matches exact specification"
 );
 assert.strictEqual(
@@ -44,7 +44,7 @@ try {
   const prodUri = getYouTubeOAuthRedirectUri();
   assert.strictEqual(
     prodUri,
-    "https://youtube-streaming-ten.vercel.app/api/auth/youtube/callback",
+    "https://tubify.sudeshcreation.shop/api/auth/youtube/callback",
     "Production default URI must be canonical Vercel production domain"
   );
 
@@ -60,7 +60,7 @@ try {
   const securedProdUri = getYouTubeOAuthRedirectUri(mockEvilRequest);
   assert.strictEqual(
     securedProdUri,
-    "https://youtube-streaming-ten.vercel.app/api/auth/youtube/callback",
+    "https://tubify.sudeshcreation.shop/api/auth/youtube/callback",
     "Production MUST ignore arbitrary incoming request Host and X-Forwarded headers"
   );
   assert(!securedProdUri.includes("evil-phishing-domain"), "Evil host header rejected in production");
@@ -70,16 +70,16 @@ try {
   const rejectedInsecureUri = getYouTubeOAuthRedirectUri();
   assert.strictEqual(
     rejectedInsecureUri,
-    "https://youtube-streaming-ten.vercel.app/api/auth/youtube/callback",
+    "https://tubify.sudeshcreation.shop/api/auth/youtube/callback",
     "Insecure HTTP APP_URL rejected in production; falls back to canonical HTTPS"
   );
 
   // D. Valid HTTPS APP_URL with trailing slash normalized cleanly
-  process.env.APP_URL = "https://youtube-streaming-ten.vercel.app/";
+  process.env.APP_URL = "https://tubify.sudeshcreation.shop/";
   const normalizedUri = getYouTubeOAuthRedirectUri();
   assert.strictEqual(
     normalizedUri,
-    "https://youtube-streaming-ten.vercel.app/api/auth/youtube/callback",
+    "https://tubify.sudeshcreation.shop/api/auth/youtube/callback",
     "Trailing slash from APP_URL normalized without double slashes"
   );
   assert(!normalizedUri.includes("//api"), "No duplicate slash in normalized path");
@@ -139,8 +139,8 @@ console.log("[PASS] Google OAuth credentials helper verified.");
 // 5. Google Cloud Console Requirement Formatter
 console.log("\n5. Testing Google Cloud Console Requirements Output...");
 const reqs = getGoogleCloudConsoleRequirements();
-assert.strictEqual(reqs.production.origin, "https://youtube-streaming-ten.vercel.app");
-assert.strictEqual(reqs.production.redirectUri, "https://youtube-streaming-ten.vercel.app/api/auth/youtube/callback");
+assert.strictEqual(reqs.production.origin, "https://tubify.sudeshcreation.shop");
+assert.strictEqual(reqs.production.redirectUri, "https://tubify.sudeshcreation.shop/api/auth/youtube/callback");
 assert.strictEqual(reqs.localDevelopment.origin, "http://localhost:3000");
 assert.strictEqual(reqs.localDevelopment.redirectUri, "http://localhost:3000/api/auth/youtube/callback");
 console.log("[PASS] Console requirements output matches specifications.");

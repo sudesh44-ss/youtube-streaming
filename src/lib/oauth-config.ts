@@ -11,7 +11,7 @@
  * from arbitrary, user-controlled Host or Forwarded headers.
  */
 
-export const PRODUCTION_BASE_URL = "https://youtube-streaming-ten.vercel.app";
+export const PRODUCTION_BASE_URL = "https://tubify.sudeshcreation.shop";
 export const YOUTUBE_OAUTH_CALLBACK_PATH = "/api/auth/youtube/callback";
 export const CANONICAL_PRODUCTION_REDIRECT_URI = `${PRODUCTION_BASE_URL}${YOUTUBE_OAUTH_CALLBACK_PATH}`;
 export const CANONICAL_LOCAL_REDIRECT_URI = `http://localhost:3000${YOUTUBE_OAUTH_CALLBACK_PATH}`;
