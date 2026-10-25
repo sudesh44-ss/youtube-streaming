@@ -592,6 +592,13 @@ async function runTests() {
       removeItem: (key: string) => store.delete(key),
       clear: () => store.clear(),
     };
+    // Grant functional consent for storage operations
+    mockLocalStorage.setItem('omnidiscover_cookie_consent', JSON.stringify({
+      functional: true,
+      necessary: true,
+      version: 2,
+      timestamp: Date.now(),
+    }));
 
     const originalWindow = (globalThis as any).window;
     (globalThis as any).window = {
@@ -818,12 +825,20 @@ async function runTests() {
   // --- 29. LOCAL WATCH HISTORY & SEARCH HISTORY ISOLATION ---
   await test("Local History Storage: Supports watch and search history independently without mutating saved videos", async () => {
     const mockStorage = new Map<string, string>();
+    const mockLocalStorage = {
+      getItem: (k: string) => mockStorage.get(k) || null,
+      setItem: (k: string, v: string) => mockStorage.set(k, v),
+      removeItem: (k: string) => mockStorage.delete(k),
+    };
+    // Grant functional consent for storage operations
+    mockLocalStorage.setItem('omnidiscover_cookie_consent', JSON.stringify({
+      functional: true,
+      necessary: true,
+      version: 2,
+      timestamp: Date.now(),
+    }));
     const fakeWindow = {
-      localStorage: {
-        getItem: (k: string) => mockStorage.get(k) || null,
-        setItem: (k: string, v: string) => mockStorage.set(k, v),
-        removeItem: (k: string) => mockStorage.delete(k),
-      },
+      localStorage: mockLocalStorage,
       dispatchEvent: () => true,
     };
 

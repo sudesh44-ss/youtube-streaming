@@ -14,7 +14,36 @@ export function isServerlessEnvironment(): boolean {
   );
 }
 
+let testDbInstance: DatabaseSync | null = null;
 export function getDb(): DatabaseSync {
+  // In platform test mode, use an in‑memory SQLite DB to avoid filesystem write‑permissions issues.
+  if (process.env.IS_PLATFORM_TEST === "true") {
+    if (testDbInstance) return testDbInstance;
+    const testDb = new DatabaseSync(":memory:");
+    try {
+      testDb.exec("PRAGMA foreign_keys = ON;");
+      initSchema(testDb);
+    } catch (e) {
+      console.warn("Failed to initialise in‑memory test DB:", e);
+    }
+    testDbInstance = testDb;
+    return testDbInstance;
+  }
+
+  if (dbInstance) return dbInstance;
+
+  // In platform test mode, use an in‑memory SQLite DB to avoid filesystem write‑permissions issues.
+  if (process.env.IS_PLATFORM_TEST === "true") {
+    const testDb = new DatabaseSync(":memory:");
+    try {
+      testDb.exec("PRAGMA foreign_keys = ON;");
+      initSchema(testDb);
+    } catch (e) {
+      console.warn("Failed to initialise in‑memory test DB:", e);
+    }
+    return testDb;
+  }
+
   if (dbInstance) return dbInstance;
 
   const serverless = isServerlessEnvironment();
