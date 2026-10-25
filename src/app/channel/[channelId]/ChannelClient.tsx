@@ -1,12 +1,10 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
   ArrowLeft,
-  Bell,
-  BellOff,
+  UserPlus,
   Play,
   Check,
   AlertCircle,
@@ -40,6 +38,18 @@ interface ChannelClientProps {
   channelId: string;
 }
 
+function appendUniqueVideos(existing: NormalizedContentItem[], incoming: NormalizedContentItem[]): NormalizedContentItem[] {
+  const seen = new Set(existing.map((item) => item.providerId || item.id));
+  const appended: NormalizedContentItem[] = [];
+  for (const item of incoming) {
+    const key = item.providerId || item.id;
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    appended.push(item);
+  }
+  return [...existing, ...appended];
+}
+
 export function ChannelClient({ channelId }: ChannelClientProps) {
   const router = useRouter();
   const handleBack = useInAppBack("/dashboard");
@@ -52,6 +62,7 @@ export function ChannelClient({ channelId }: ChannelClientProps) {
   const [videosNextPageToken, setVideosNextPageToken] = useState<string | undefined>(undefined);
   const [videosLoading, setVideosLoading] = useState(false);
   const [videosLoadingMore, setVideosLoadingMore] = useState(false);
+  const [loadMoreError, setLoadMoreError] = useState<string | null>(null);
   const [videosLoaded, setVideosLoaded] = useState(false);
 
   // Independent state for Shorts tab
@@ -65,7 +76,7 @@ export function ChannelClient({ channelId }: ChannelClientProps) {
   const [error, setError] = useState<string | null>(null);
 
   // Subscription state
-  const [isSubscribed, setIsSubscribed] = useState(false);
+  const [isSubscribed, setIsSubscribed] = useState<boolean | null>(null);
   const [subscribing, setSubscribing] = useState(false);
   const [subToast, setSubToast] = useState<string | null>(null);
 
@@ -99,7 +110,7 @@ export function ChannelClient({ channelId }: ChannelClientProps) {
       }
       const data = await res.json();
       setChannel(data.channel);
-      setIsSubscribed(Boolean(data.channel?.isSubscribed));
+      setIsSubscribed(typeof data.channel?.isSubscribed === "boolean" ? data.channel.isSubscribed : null);
       setVideosUploads(data.uploads || []);
       setVideosNextPageToken(data.nextPageToken);
       setVideosLoaded(true);
@@ -118,6 +129,7 @@ export function ChannelClient({ channelId }: ChannelClientProps) {
   // Handle switching between Videos and Shorts tabs
   const handleTabChange = async (tab: "videos" | "shorts") => {
     if (tab === activeTab) return;
+    setLoadMoreError(null);
     setActiveTab(tab);
 
     if (tab === "shorts" && !shortsLoaded) {
@@ -155,6 +167,7 @@ export function ChannelClient({ channelId }: ChannelClientProps) {
 
   // Load more 10 items per batch for the active tab
   const handleLoadMore = async () => {
+    setLoadMoreError(null);
     if (activeTab === "videos") {
       if (!videosNextPageToken || videosLoadingMore) return;
       setVideosLoadingMore(true);
@@ -164,13 +177,12 @@ export function ChannelClient({ channelId }: ChannelClientProps) {
             videosNextPageToken
           )}`
         );
-        if (res.ok) {
-          const data = await res.json();
-          setVideosUploads((prev) => [...prev, ...(data.uploads || [])]);
-          setVideosNextPageToken(data.nextPageToken);
-        }
-      } catch {
-        // Graceful error
+        if (!res.ok) throw new Error("Could not load the next videos. Retry to continue.");
+        const data = await res.json();
+        setVideosUploads((prev) => appendUniqueVideos(prev, data.uploads || []));
+        setVideosNextPageToken(data.nextPageToken);
+      } catch (err) {
+        setLoadMoreError(err instanceof Error ? err.message : "Could not load the next videos. Retry to continue.");
       } finally {
         setVideosLoadingMore(false);
       }
@@ -183,13 +195,12 @@ export function ChannelClient({ channelId }: ChannelClientProps) {
             shortsNextPageToken
           )}`
         );
-        if (res.ok) {
-          const data = await res.json();
-          setShortsUploads((prev) => [...prev, ...(data.uploads || [])]);
-          setShortsNextPageToken(data.nextPageToken);
-        }
-      } catch {
-        // Graceful error
+        if (!res.ok) throw new Error("Could not load the next Shorts. Retry to continue.");
+        const data = await res.json();
+        setShortsUploads((prev) => appendUniqueVideos(prev, data.uploads || []));
+        setShortsNextPageToken(data.nextPageToken);
+      } catch (err) {
+        setLoadMoreError(err instanceof Error ? err.message : "Could not load the next Shorts. Retry to continue.");
       } finally {
         setShortsLoadingMore(false);
       }
@@ -204,7 +215,7 @@ export function ChannelClient({ channelId }: ChannelClientProps) {
   const handleToggleSubscribe = async () => {
     if (subscribing) return;
     setSubscribing(true);
-    const newAction = isSubscribed ? "unsubscribe" : "subscribe";
+    const newAction = isSubscribed === true ? "unsubscribe" : "subscribe";
     try {
       const res = await fetch("/api/content/youtube-subscribe", {
         method: "POST",
@@ -212,24 +223,26 @@ export function ChannelClient({ channelId }: ChannelClientProps) {
         body: JSON.stringify({
           channelId,
           action: newAction,
-          subscriptionId: channel?.subscriptionId,
         }),
       });
 
       const data = await res.json();
       if (!res.ok) {
-        if (data.requiresConnect) {
-          if (confirm("Connecting your YouTube account is required to subscribe to creators directly. Would you like to connect your account now in Settings?")) {
-            window.location.href = "/settings?tab=youtube_account";
+        if (data.requiresConnect || data.requiresReauth) {
+          if (confirm(data.error || "Connect your YouTube account to manage subscriptions. Open Settings now?")) {
+            // OAuth starts with a full-page redirect, so the browser must follow the route handler redirect.
+            // eslint-disable-next-line @next/next/no-location-assign-relative-destination
+            window.location.href = "/api/auth/youtube/connect";
           }
           return;
         }
         throw new Error(data.error || "Subscription request failed.");
       }
 
-      const nextSubState = newAction === "subscribe";
+      if (!data.verified) throw new Error(data.error || "YouTube subscription status could not be verified.");
+      const nextSubState = data.status === "subscribed";
       setIsSubscribed(nextSubState);
-      setSubToast(nextSubState ? "Subscribed to channel!" : "Unsubscribed from channel.");
+      setSubToast(nextSubState ? "YouTube subscription verified." : "YouTube unsubscribe verified.");
       setTimeout(() => setSubToast(null), 3000);
     } catch (err: any) {
       alert(err.message || "Failed to update subscription");
@@ -286,7 +299,15 @@ export function ChannelClient({ channelId }: ChannelClientProps) {
         {/* Creator Info Header */}
         <div className="channel-header-card">
           <div className="channel-avatar-wrap">
-            <img src={channel.avatar} alt={channel.title} className="channel-avatar-img" />
+            <span className="channel-avatar-fallback" aria-hidden="true">{channel.title.charAt(0).toUpperCase() || "C"}</span>
+            {channel.avatar ? (
+              <img
+                src={channel.avatar}
+                alt={channel.title}
+                className="channel-avatar-img"
+                onError={(event) => { (event.currentTarget as HTMLImageElement).style.display = "none"; }}
+              />
+            ) : null}
           </div>
 
           <div className="channel-details">
@@ -337,20 +358,20 @@ export function ChannelClient({ channelId }: ChannelClientProps) {
               type="button"
               onClick={handleToggleSubscribe}
               disabled={subscribing}
-              className={`btn btn-sm channel-sub-btn ${isSubscribed ? "subscribed" : "btn-primary"}`}
-              title={isSubscribed ? "Subscribed on YouTube" : "Subscribe to channel"}
+              className={`btn btn-sm channel-sub-btn ${isSubscribed === true ? "subscribed" : "btn-primary"}`}
+              title={isSubscribed === true ? "Subscribed on YouTube" : "Manage YouTube subscription"}
             >
               {subscribing ? (
                 <Loader2 size={16} className="spin" />
-              ) : isSubscribed ? (
+              ) : isSubscribed === true ? (
                 <>
                   <Check size={16} />
                   <span>Subscribed</span>
                 </>
               ) : (
                 <>
-                  <Bell size={16} />
-                  <span>Subscribe</span>
+                  <UserPlus size={16} />
+                  <span>{isSubscribed === null ? "Connect YouTube" : "Subscribe"}</span>
                 </>
               )}
             </button>
@@ -536,6 +557,7 @@ export function ChannelClient({ channelId }: ChannelClientProps) {
           {/* Load More Button (10 items per batch) */}
           {currentNextPageToken && !currentTabLoading && (
             <div className="load-more-container">
+              {loadMoreError && <span role="status" className="load-more-error">{loadMoreError}</span>}
               <button
                 type="button"
                 onClick={handleLoadMore}
@@ -681,6 +703,21 @@ export function ChannelClient({ channelId }: ChannelClientProps) {
           width: 100%;
           height: 100%;
           object-fit: cover;
+          position: absolute;
+          inset: 0;
+          z-index: 1;
+        }
+
+        .channel-avatar-fallback {
+          width: 100%;
+          height: 100%;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          color: #fff;
+          background: linear-gradient(135deg, #38bdf8, #2563eb);
+          font-size: 2rem;
+          font-weight: 700;
         }
 
         .channel-details {
@@ -1119,6 +1156,11 @@ export function ChannelClient({ channelId }: ChannelClientProps) {
         .load-more-btn {
           min-width: 220px;
           justify-content: center;
+        }
+
+        .load-more-error {
+          color: var(--accent-rose);
+          font-size: 0.8125rem;
         }
 
         .channel-toast {

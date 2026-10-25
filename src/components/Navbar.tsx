@@ -79,6 +79,7 @@ export function Navbar() {
   const [menuOpen, setMenuOpen] = useState(false);
 
   const desktopPanelRef = useRef<HTMLDivElement>(null);
+  const mobileDrawerRef = useRef<HTMLElement>(null);
   const toggleBtnRef = useRef<HTMLButtonElement>(null);
 
   const checkSession = useCallback(async () => {
@@ -157,14 +158,11 @@ export function Navbar() {
 
     const handlePointerDown = (e: PointerEvent) => {
       const target = e.target as Node;
-      if (
-        desktopPanelRef.current &&
-        !desktopPanelRef.current.contains(target) &&
-        toggleBtnRef.current &&
-        !toggleBtnRef.current.contains(target)
-      ) {
-        setMenuOpen(false);
-      }
+      if (toggleBtnRef.current && toggleBtnRef.current.contains(target)) return;
+      if (desktopPanelRef.current && desktopPanelRef.current.contains(target)) return;
+      if (mobileDrawerRef.current && mobileDrawerRef.current.contains(target)) return;
+
+      setMenuOpen(false);
     };
 
     document.addEventListener("keydown", handleKeyDown);
@@ -233,7 +231,8 @@ export function Navbar() {
     : publicNavItems;
 
   return (
-    <header className="navbar-header">
+    <>
+      <header className="navbar-header">
       <div className="container nav-container">
         {/* Brand */}
         <div className="nav-brand-group">
@@ -512,25 +511,27 @@ export function Navbar() {
           )}
         </div>
       </div>
+    </header>
 
-      {/* Mobile Drawer Navigation (slides in from left) */}
-      {menuOpen && (
-        <div className="nav-mobile-overlay">
-          {/* Backdrop */}
-          <div
-            className="nav-mobile-backdrop"
-            onClick={() => setMenuOpen(false)}
-            aria-hidden="true"
-          />
+    {/* Mobile Drawer Navigation (slides in from left) */}
+    {menuOpen && (
+      <div className="nav-mobile-overlay">
+        {/* Backdrop */}
+        <div
+          className="nav-mobile-backdrop"
+          onClick={() => setMenuOpen(false)}
+          aria-hidden="true"
+        />
 
-          {/* Drawer Sliding from Left */}
-          <aside
-            id="nav-mobile-drawer"
-            role="dialog"
-            aria-modal="true"
-            aria-label="Navigation drawer"
-            className="nav-mobile-drawer"
-          >
+        {/* Drawer Sliding from Left */}
+        <aside
+          ref={mobileDrawerRef}
+          id="nav-mobile-drawer"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Navigation drawer"
+          className="nav-mobile-drawer"
+        >
             {/* Drawer Header */}
             <div className="drawer-header">
               <Link
@@ -1264,8 +1265,11 @@ export function Navbar() {
           right: 0;
           left: auto;
           bottom: 0;
+          height: 100%;
+          height: 100dvh;
+          max-height: 100dvh;
           width: 50vw;
-          min-width: 260px;
+          min-width: min(260px, 100vw);
           max-width: 380px;
           background-color: var(--bg-surface);
           border-left: 1px solid var(--border-color);
@@ -1275,6 +1279,7 @@ export function Navbar() {
           flex-direction: column;
           z-index: 1000;
           overflow-y: auto;
+          -webkit-overflow-scrolling: touch;
           animation: mobileSlideInRight 0.25s cubic-bezier(0.16, 1, 0.3, 1) forwards;
           box-sizing: border-box;
         }
@@ -1437,6 +1442,6 @@ export function Navbar() {
           }
         }
       `}</style>
-    </header>
+    </>
   );
 }

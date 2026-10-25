@@ -1105,6 +1105,7 @@ export interface OAuthConnectionRecord {
   connectedAt?: number;
   accessToken?: string;
   expiresAt?: number;
+  scope?: string;
 }
 
 async function refreshGoogleAccessToken(
@@ -1221,6 +1222,7 @@ export async function getOAuthConnectionAsync(
           connectedAt: typeof data.updated_at === "string" ? new Date(data.updated_at).getTime() : data.updated_at,
           accessToken,
           expiresAt: data.expires_at,
+          scope: data.scope || undefined,
         };
       }
     } catch {
@@ -1274,6 +1276,7 @@ export async function getOAuthConnectionAsync(
         connectedAt: row.updated_at,
         accessToken,
         expiresAt: row.expires_at,
+        scope: row.scope || undefined,
       };
     }
   } catch {

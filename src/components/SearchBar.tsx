@@ -215,6 +215,8 @@ export function SearchBar({
           spellCheck={false}
           style={{
             width: "100%",
+            minWidth: 0,
+            flex: 1,
             background: "transparent",
             border: "none",
             outline: "none",

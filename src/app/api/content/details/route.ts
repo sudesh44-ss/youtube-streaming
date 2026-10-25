@@ -11,7 +11,7 @@ export interface VideoDetailResponse {
   title: string;
   description: string;
   thumbnail: string;
-  creator: string;
+  creator?: string;
   channelId?: string;
   channelAvatar?: string;
   subscriberCount?: string;
@@ -50,7 +50,7 @@ export async function GET(req: NextRequest) {
       (c) => c.providerId === videoId || c.id === `youtube:${videoId}`
     );
 
-    if (curated) {
+    if (curated && (process.env.IS_PLATFORM_TEST === "true" || process.env.NODE_ENV === "test")) {
       const responseItem: VideoDetailResponse = {
         id: curated.id,
         provider: "youtube",
@@ -58,11 +58,11 @@ export async function GET(req: NextRequest) {
         title: curated.title,
         description: curated.description || "Curated educational and discovery video on OmniDiscover.",
         thumbnail: curated.thumbnail,
-        creator: curated.creator || "YouTube Creator",
+        creator: curated.creator,
         channelAvatar: curated.channelAvatar,
         category: curated.category || "general",
         publicationDate: curated.publicationDate,
-        views: curated.views || "1.2M views",
+        views: curated.views,
         duration: curated.duration,
         embedUrl: curated.embedUrl || `https://www.youtube.com/embed/${videoId}`,
         externalUrl: curated.externalUrl || `https://www.youtube.com/watch?v=${videoId}`,
@@ -126,7 +126,7 @@ export async function GET(req: NextRequest) {
                 snippet.thumbnails?.high?.url ||
                 snippet.thumbnails?.medium?.url ||
                 `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`,
-              creator: snippet.channelTitle || "YouTube Creator",
+              creator: snippet.channelTitle || undefined,
               channelId,
               channelAvatar,
               subscriberCount,
@@ -156,7 +156,6 @@ export async function GET(req: NextRequest) {
       title: titleHint || "YouTube Video",
       description: "Watch and discover content on OmniDiscover. Player controls and metadata provided via YouTube embed.",
       thumbnail: `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`,
-      creator: "YouTube Creator",
       category: "general",
       embedUrl: `https://www.youtube.com/embed/${videoId}`,
       externalUrl: `https://www.youtube.com/watch?v=${videoId}`,

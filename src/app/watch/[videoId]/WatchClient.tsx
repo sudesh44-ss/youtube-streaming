@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef, useCallback } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import {
   ArrowLeft,
@@ -17,6 +17,7 @@ import {
   PictureInPicture2,
   Minimize2,
   Bell,
+  UserPlus,
   Loader2,
 } from "lucide-react";
 import { useTranslation } from "@/lib/i18n/LanguageContext";
@@ -67,7 +68,6 @@ interface WatchClientProps {
 }
 
 export default function WatchClient({ videoId, initialTitle }: WatchClientProps) {
-  const router = useRouter();
   const handleBack = useInAppBack("/dashboard");
   const { openMiniPlayer } = useMiniPlayer();
   const searchParams = useSearchParams();
@@ -110,7 +110,6 @@ export default function WatchClient({ videoId, initialTitle }: WatchClientProps)
 
   // Video metadata
   const [item, setItem] = useState<VideoDetailResponse | null>(null);
-  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   // Interactive local states
@@ -119,8 +118,9 @@ export default function WatchClient({ videoId, initialTitle }: WatchClientProps)
   const [inWatchLater, setInWatchLater] = useState(false);
 
   // Channel subscription state
-  const [isChannelSubscribed, setIsChannelSubscribed] = useState(false);
+  const [isChannelSubscribed, setIsChannelSubscribed] = useState<boolean | null>(null);
   const [subscribingChannel, setSubscribingChannel] = useState(false);
+  const [checkingSubscription, setCheckingSubscription] = useState(false);
 
   // YouTube OAuth connection & confirmation state
   const [isYtConnected, setIsYtConnected] = useState(false);
@@ -171,7 +171,9 @@ export default function WatchClient({ videoId, initialTitle }: WatchClientProps)
   // Fetch full video details
   useEffect(() => {
     let isMounted = true;
-    setLoading(true);
+    setItem(null);
+    setIsChannelSubscribed(null);
+    setCheckingSubscription(false);
     setError(null);
 
     const titleParam = initialTitle ? `&title=${encodeURIComponent(initialTitle)}` : "";
@@ -188,15 +190,34 @@ export default function WatchClient({ videoId, initialTitle }: WatchClientProps)
       .catch(() => {
         if (!isMounted) return;
         setError("Network error while resolving video information.");
-      })
-      .finally(() => {
-        if (isMounted) setLoading(false);
       });
 
     return () => {
       isMounted = false;
     };
   }, [videoId, initialTitle]);
+
+  useEffect(() => {
+    if (!item?.channelId) {
+      setIsChannelSubscribed(null);
+      return;
+    }
+    let active = true;
+    setCheckingSubscription(true);
+    fetch(`/api/content/youtube-subscribe?channelId=${encodeURIComponent(item.channelId)}`)
+      .then(async (res) => {
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.error || "Subscription status unavailable");
+        if (active) setIsChannelSubscribed(Boolean(data.isSubscribed));
+      })
+      .catch(() => {
+        if (active) setIsChannelSubscribed(null);
+      })
+      .finally(() => {
+        if (active) setCheckingSubscription(false);
+      });
+    return () => { active = false; };
+  }, [item?.channelId]);
 
   const thumbnail = item?.thumbnail || `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`;
 
@@ -345,7 +366,7 @@ export default function WatchClient({ videoId, initialTitle }: WatchClientProps)
   const handleToggleChannelSubscribe = async () => {
     if (!item?.channelId || subscribingChannel) return;
     setSubscribingChannel(true);
-    const newAction = isChannelSubscribed ? "unsubscribe" : "subscribe";
+    const newAction = isChannelSubscribed === true ? "unsubscribe" : "subscribe";
     try {
       const res = await fetch("/api/content/youtube-subscribe", {
         method: "POST",
@@ -357,16 +378,24 @@ export default function WatchClient({ videoId, initialTitle }: WatchClientProps)
       });
       const data = await res.json();
       if (!res.ok) {
-        if (data.requiresConnect) {
-          alert("To subscribe to YouTube creators directly, please connect your YouTube account in Settings.");
+        if (data.requiresConnect || data.requiresReauth) {
+          showFeedback(data.error || "Connect YouTube in Settings to manage subscriptions.");
+          // OAuth requires a full-page redirect so the authorization response can be followed.
+          // eslint-disable-next-line @next/next/no-location-assign-relative-destination
+          window.location.assign("/api/auth/youtube/connect");
           return;
         }
         throw new Error(data.error || "Subscription request failed.");
       }
-      setIsChannelSubscribed(newAction === "subscribe");
-      showFeedback(newAction === "subscribe" ? "Subscribed to channel!" : "Unsubscribed from channel.");
+      if (data.verified) {
+        setIsChannelSubscribed(data.status === "subscribed");
+        showFeedback(data.status === "subscribed" ? "YouTube subscription verified." : "YouTube unsubscribe verified.");
+      } else {
+        setIsChannelSubscribed(null);
+        showFeedback(data.error || "YouTube subscription status could not be verified.");
+      }
     } catch (err: any) {
-      alert(err.message || "Failed to update subscription");
+      showFeedback(err.message || "Failed to update subscription");
     } finally {
       setSubscribingChannel(false);
     }
@@ -530,11 +559,11 @@ export default function WatchClient({ videoId, initialTitle }: WatchClientProps)
   };
 
   const title = item?.title || initialTitle || "YouTube Video";
-  const creator = item?.creator || "YouTube Creator";
+  const creator = item?.creator || "";
   const channelAvatar = item?.channelAvatar;
-  const subscriberCount = item?.subscriberCount || "Official Channel";
-  const views = item?.views || (loading ? "Loading stats..." : "YouTube Discovery");
-  const publicationDate = item?.publicationDate || "Recently published";
+  const subscriberCount = item?.subscriberCount;
+  const views = item?.views;
+  const publicationDate = item?.publicationDate;
   const channelInitial = (creator.charAt(0) || "Y").toUpperCase();
 
   return (
@@ -652,9 +681,9 @@ export default function WatchClient({ videoId, initialTitle }: WatchClientProps)
             {/* Video Metadata / View Stats */}
             <div className="watch-meta-row">
               <div className="watch-stats-group">
-                <span className="watch-views-text">{views}</span>
-                <span className="meta-separator">•</span>
-                <span className="watch-date-text">{publicationDate}</span>
+                {views && <span className="watch-views-text">{views}</span>}
+                {views && publicationDate && <span className="meta-separator">•</span>}
+                {publicationDate && <span className="watch-date-text">{publicationDate}</span>}
                 {item?.category && (
                   <>
                     <span className="meta-separator">•</span>
@@ -695,8 +724,8 @@ export default function WatchClient({ videoId, initialTitle }: WatchClientProps)
                     </div>
 
                     <div className="channel-names">
-                      <h3 className="channel-title">{creator}</h3>
-                      <p className="channel-subs">{subscriberCount}</p>
+                      {creator && <h3 className="channel-title">{creator}</h3>}
+                      {subscriberCount && <p className="channel-subs">{subscriberCount}</p>}
                     </div>
                   </Link>
                 ) : (
@@ -716,8 +745,8 @@ export default function WatchClient({ videoId, initialTitle }: WatchClientProps)
                     </div>
 
                     <div className="channel-names">
-                      <h3 className="channel-title">{creator}</h3>
-                      <p className="channel-subs">{subscriberCount}</p>
+                      {creator && <h3 className="channel-title">{creator}</h3>}
+                      {subscriberCount && <p className="channel-subs">{subscriberCount}</p>}
                     </div>
                   </div>
                 )}
@@ -726,23 +755,34 @@ export default function WatchClient({ videoId, initialTitle }: WatchClientProps)
                   <button
                     type="button"
                     onClick={handleToggleChannelSubscribe}
-                    disabled={subscribingChannel}
+                    disabled={subscribingChannel || checkingSubscription}
                     className={`btn btn-sm channel-sub-pill ${isChannelSubscribed ? "subscribed" : "btn-primary"}`}
-                    title={isChannelSubscribed ? "Subscribed to channel" : "Subscribe to channel"}
+                    title={isChannelSubscribed === true ? "Subscribed to channel" : "Subscribe to channel"}
                   >
-                    {subscribingChannel ? (
+                    {subscribingChannel || checkingSubscription ? (
                       <Loader2 size={14} className="spin" />
-                    ) : isChannelSubscribed ? (
+                    ) : isChannelSubscribed === true ? (
                       <>
                         <Check size={14} />
                         <span>Subscribed</span>
                       </>
                     ) : (
                       <>
-                        <Bell size={14} />
+                        <UserPlus size={14} />
                         <span>Subscribe</span>
                       </>
                     )}
+                  </button>
+                )}
+                {item?.channelId && (
+                  <button
+                    type="button"
+                    className="btn btn-outline btn-sm watch-notification-info"
+                    aria-label="YouTube notification preferences cannot be changed here"
+                    title="YouTube's API does not let OmniDiscover change notification preferences. Manage them on YouTube."
+                    onClick={() => showFeedback("Notification preferences are managed on YouTube; this control cannot change them.")}
+                  >
+                    <Bell size={16} />
                   </button>
                 )}
               </div>
@@ -829,7 +869,7 @@ export default function WatchClient({ videoId, initialTitle }: WatchClientProps)
                     <div ref={menuRef} role="menu" className="watch-action-menu">
                       {/* Watch on YouTube External Link */}
                       <a
-                        href={`https://www.youtube.com/watch?v=${videoId}`}
+                        href={item?.externalUrl || `https://www.youtube.com/watch?v=${encodeURIComponent(videoId)}`}
                         target="_blank"
                         rel="noopener noreferrer"
                         role="menuitem"
@@ -837,7 +877,7 @@ export default function WatchClient({ videoId, initialTitle }: WatchClientProps)
                         onClick={() => setMenuOpen(false)}
                       >
                         <ExternalLink size={16} />
-                        <span>Watch on YouTube</span>
+                        <span>YouTube</span>
                       </a>
 
                       <button
@@ -1179,6 +1219,18 @@ export default function WatchClient({ videoId, initialTitle }: WatchClientProps)
           border: 1px solid var(--border-color);
         }
 
+        .watch-notification-info {
+          width: 34px;
+          height: 34px;
+          min-width: 34px;
+          padding: 0;
+          border-radius: 50%;
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          flex-shrink: 0;
+        }
+
         .video-action-buttons {
           display: flex;
           align-items: center;
@@ -1333,6 +1385,12 @@ export default function WatchClient({ videoId, initialTitle }: WatchClientProps)
             font-size: 0.75rem !important;
             flex-shrink: 0 !important;
             white-space: nowrap !important;
+          }
+          .watch-notification-info {
+            width: 34px !important;
+            height: 34px !important;
+            min-width: 34px !important;
+            flex-shrink: 0 !important;
           }
           .video-action-buttons {
             display: flex !important;

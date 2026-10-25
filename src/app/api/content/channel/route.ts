@@ -7,6 +7,10 @@ import { parseIsoDuration, formatViewCount } from "@/lib/format-utils";
 
 export const dynamic = "force-dynamic";
 
+function validChannelId(value: string): boolean {
+  return /^UC[A-Za-z0-9_-]{22}$/.test(value);
+}
+
 function formatCount(countStr?: string): string | undefined {
   if (!countStr) return undefined;
   const num = parseInt(countStr, 10);
@@ -26,6 +30,12 @@ export async function GET(req: NextRequest) {
 
     if (!channelId) {
       return NextResponse.json({ error: "channelId is required" }, { status: 400 });
+    }
+    if (!validChannelId(channelId)) {
+      return NextResponse.json({ error: "A valid YouTube channel ID is required." }, { status: 400 });
+    }
+    if (pageToken.length > 1024 || /[\r\n\s]/.test(pageToken)) {
+      return NextResponse.json({ error: "Invalid channel page token." }, { status: 400 });
     }
 
     const session = await getCurrentSession();
@@ -68,7 +78,7 @@ export async function GET(req: NextRequest) {
 
       channelMeta = {
         id: channelId,
-        title: snippet.title || "YouTube Creator",
+        title: snippet.title || "",
         description: snippet.description || "",
         customUrl: snippet.customUrl,
         avatar:
@@ -92,10 +102,10 @@ export async function GET(req: NextRequest) {
     }
 
     // 2. Check real subscription status if user has connected YouTube OAuth
-    let isSubscribed = false;
+    let isSubscribed: boolean | undefined;
     let subscriptionId: string | undefined = undefined;
 
-    if (session?.user?.id) {
+    if (session?.user?.id && !pageToken) {
       try {
         const conn = await getOAuthConnectionAsync(session.user.id, "youtube");
         if (conn?.accessToken) {
@@ -108,10 +118,8 @@ export async function GET(req: NextRequest) {
           });
           if (subRes.ok) {
             const subData = await subRes.json();
-            if (Array.isArray(subData.items) && subData.items.length > 0) {
-              isSubscribed = true;
-              subscriptionId = subData.items[0].id;
-            }
+            isSubscribed = Array.isArray(subData.items) && subData.items.length > 0;
+            if (isSubscribed) subscriptionId = subData.items[0].id;
           }
         }
       } catch {

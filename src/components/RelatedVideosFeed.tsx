@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useState, useMemo, useCallback } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Play, Sparkles } from "lucide-react";
@@ -17,46 +17,69 @@ export function RelatedVideosFeed({ currentVideoId, title, category }: RelatedVi
   const router = useRouter();
   const [items, setItems] = useState<NormalizedContentItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   // Extract clean keywords from the video title
   const searchQuery = useMemo(() => {
-    if (!title) return category || "trending";
+    if (!title) return category || "";
     const clean = title
       .replace(/[|#@\-_:()\[\]]/g, " ")
       .split(/\s+/)
       .filter((w) => w.length > 2 && !["the", "and", "for", "with", "this", "that", "from", "video", "official"].includes(w.toLowerCase()))
       .slice(0, 4)
       .join(" ");
-    return clean || category || "recommended";
+    return clean || category || "";
   }, [title, category]);
 
-  useEffect(() => {
-    let active = true;
-    const fetchRelated = async () => {
-      setLoading(true);
-      try {
-        const res = await fetch(`/api/content/search?q=${encodeURIComponent(searchQuery)}&limit=36`);
-        if (!res.ok) return;
-        const data = await res.json();
-        if (active && Array.isArray(data.items)) {
-          // Exclude currently playing video
-          const filtered = data.items.filter(
-            (item: NormalizedContentItem) => item.providerId !== currentVideoId && !item.id?.includes(currentVideoId)
-          );
-          setItems(filtered.slice(0, 30));
-        }
-      } catch {
-        // Fallback gracefully
-      } finally {
-        if (active) setLoading(false);
-      }
-    };
+  const fetchRelated = useCallback(async (signal?: AbortSignal) => {
+    setLoading(true);
+    setError(null);
+    setItems([]);
+    if (!searchQuery) {
+      setLoading(false);
+      return;
+    }
+    try {
+      const collected: NormalizedContentItem[] = [];
+      const seen = new Set<string>([currentVideoId]);
+      let pageToken: string | undefined;
 
-    fetchRelated();
-    return () => {
-      active = false;
-    };
+      // The search endpoint caps each page at 20. Two pages fill the 40-card limit.
+      for (let page = 0; page < 2 && collected.length < 40; page += 1) {
+        const params = new URLSearchParams({ q: searchQuery, limit: "20" });
+        if (pageToken) params.set("pageToken", pageToken);
+        const res = await fetch(`/api/content/search?${params.toString()}`, { signal });
+        if (!res.ok) throw new Error("Could not load related videos.");
+        const data = await res.json();
+        if (!Array.isArray(data.items)) throw new Error("Related videos were unavailable.");
+
+        for (const item of data.items as NormalizedContentItem[]) {
+          const id = item.providerId || item.id?.replace(/^youtube:/, "");
+          if (!id || seen.has(id)) continue;
+          seen.add(id);
+          collected.push(item);
+          if (collected.length === 40) break;
+        }
+        if (!signal?.aborted) setItems([...collected]);
+        pageToken = data.nextPageToken || undefined;
+        if (!pageToken) break;
+      }
+
+      if (!signal?.aborted) setItems(collected);
+    } catch (err) {
+      if (!signal?.aborted) setError(err instanceof Error ? err.message : "Could not load related videos.");
+    } finally {
+      if (!signal?.aborted) setLoading(false);
+    }
   }, [currentVideoId, searchQuery]);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    fetchRelated(controller.signal);
+    return () => {
+      controller.abort();
+    };
+  }, [fetchRelated]);
 
   return (
     <section className="related-videos-section" aria-label="Related Videos">
@@ -75,6 +98,17 @@ export function RelatedVideosFeed({ currentVideoId, title, category }: RelatedVi
             </div>
           ))}
         </div>
+      )}
+
+      {error && !loading && (
+        <div className="related-state" role="status">
+          <span>{error}</span>
+          <button type="button" onClick={() => fetchRelated()}>Retry</button>
+        </div>
+      )}
+
+      {!loading && !error && items.length === 0 && (
+        <p className="related-empty">No related videos were found.</p>
       )}
 
       {!loading && items.length > 0 && (
@@ -109,6 +143,7 @@ export function RelatedVideosFeed({ currentVideoId, title, category }: RelatedVi
 
                   {/* Creator metadata row on the same line: [Avatar] Creator · views · upload age */}
                   <div className="related-meta-line">
+                    {video.creator && (
                     <div
                       className={`related-creator-group ${video.channelId ? "clickable" : "non-clickable"}`}
                       onClick={(e) => {
@@ -124,7 +159,7 @@ export function RelatedVideosFeed({ currentVideoId, title, category }: RelatedVi
                         {video.channelAvatar ? (
                           <img
                             src={video.channelAvatar}
-                            alt={video.creator || "Creator"}
+                            alt={video.creator}
                             className="related-avatar-img"
                             onError={(e) => {
                               (e.target as HTMLElement).style.display = "none";
@@ -137,21 +172,22 @@ export function RelatedVideosFeed({ currentVideoId, title, category }: RelatedVi
                           className="related-avatar-fallback"
                           style={{ display: video.channelAvatar ? "none" : "flex" }}
                         >
-                          {((video.creator || "C").charAt(0)).toUpperCase()}
+                          {video.creator.charAt(0).toUpperCase()}
                         </div>
                       </div>
 
                       <span className="related-channel-name">
-                        {video.creator || "Creator"}
+                        {video.creator}
                       </span>
                     </div>
+                    )}
 
                     {(() => {
                       const formattedViews = formatViewCount(video.views);
                       const uploadAge = formatUploadAge(video.publicationDate);
                       return (
                         <>
-                          {(formattedViews || uploadAge) && <span className="related-dot">·</span>}
+                          {video.creator && (formattedViews || uploadAge) && <span className="related-dot">·</span>}
                           {formattedViews && <span>{formattedViews}</span>}
                           {formattedViews && uploadAge && <span className="related-dot">·</span>}
                           {uploadAge && <span>{uploadAge}</span>}
@@ -296,6 +332,7 @@ export function RelatedVideosFeed({ currentVideoId, title, category }: RelatedVi
           color: var(--text-dim);
           line-height: 1.3;
           margin-top: 0.15rem;
+          min-width: 0;
         }
 
         .related-creator-group {
@@ -364,6 +401,27 @@ export function RelatedVideosFeed({ currentVideoId, title, category }: RelatedVi
 
         .related-dot {
           color: var(--text-dim);
+        }
+
+        .related-state,
+        .related-empty {
+          color: var(--text-muted);
+          font-size: 0.875rem;
+        }
+
+        .related-state {
+          display: flex;
+          align-items: center;
+          gap: 0.75rem;
+        }
+
+        .related-state button {
+          border: 1px solid var(--border-color);
+          border-radius: var(--radius-sm);
+          background: var(--bg-surface);
+          color: var(--text-main);
+          padding: 0.35rem 0.65rem;
+          cursor: pointer;
         }
 
         /* Skeleton loader */
