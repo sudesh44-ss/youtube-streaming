@@ -4,7 +4,7 @@ import { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import {
   ArrowLeft,
-  UserPlus,
+  Bell,
   Play,
   Check,
   AlertCircle,
@@ -19,6 +19,7 @@ import {
 import { useInAppBack } from "@/lib/useInAppBack";
 import { NormalizedContentItem } from "@/lib/types";
 import { formatUploadAge, formatViewCount } from "@/lib/format-utils";
+import { YouTubeConnectionPopup } from "@/components/YouTubeConnectionPopup";
 
 interface ChannelDetails {
   id: string;
@@ -76,9 +77,10 @@ export function ChannelClient({ channelId }: ChannelClientProps) {
   const [error, setError] = useState<string | null>(null);
 
   // Subscription state
-  const [isSubscribed, setIsSubscribed] = useState<boolean | null>(null);
+  const [isSubscribed, setIsSubscribed] = useState(false);
   const [subscribing, setSubscribing] = useState(false);
   const [subToast, setSubToast] = useState<string | null>(null);
+  const [showConnectPopup, setShowConnectPopup] = useState(false);
 
   // Description modal state
   const [descModalOpen, setDescModalOpen] = useState(false);
@@ -110,10 +112,20 @@ export function ChannelClient({ channelId }: ChannelClientProps) {
       }
       const data = await res.json();
       setChannel(data.channel);
-      setIsSubscribed(typeof data.channel?.isSubscribed === "boolean" ? data.channel.isSubscribed : null);
+      setIsSubscribed(Boolean(data.channel?.isSubscribed));
       setVideosUploads(data.uploads || []);
       setVideosNextPageToken(data.nextPageToken);
       setVideosLoaded(true);
+
+      // Verify active subscription state with YouTube if connected
+      fetch(`/api/content/youtube-subscribe?channelId=${encodeURIComponent(channelId)}`)
+        .then((r) => r.json())
+        .then((subData) => {
+          if (subData?.success && typeof subData.isSubscribed === "boolean") {
+            setIsSubscribed(subData.isSubscribed);
+          }
+        })
+        .catch(() => {});
     } catch (err: any) {
       setError(err.message || "Failed to load creator channel");
     } finally {
@@ -215,7 +227,7 @@ export function ChannelClient({ channelId }: ChannelClientProps) {
   const handleToggleSubscribe = async () => {
     if (subscribing) return;
     setSubscribing(true);
-    const newAction = isSubscribed === true ? "unsubscribe" : "subscribe";
+    const newAction = isSubscribed ? "unsubscribe" : "subscribe";
     try {
       const res = await fetch("/api/content/youtube-subscribe", {
         method: "POST",
@@ -229,11 +241,9 @@ export function ChannelClient({ channelId }: ChannelClientProps) {
       const data = await res.json();
       if (!res.ok) {
         if (data.requiresConnect || data.requiresReauth) {
-          if (confirm(data.error || "Connect your YouTube account to manage subscriptions. Open Settings now?")) {
-            // OAuth starts with a full-page redirect, so the browser must follow the route handler redirect.
-            // eslint-disable-next-line @next/next/no-location-assign-relative-destination
-            window.location.href = "/api/auth/youtube/connect";
-          }
+          setShowConnectPopup(true);
+          setSubToast("Connect YouTube in Settings or via popup to manage subscriptions.");
+          setTimeout(() => setSubToast(null), 4000);
           return;
         }
         throw new Error(data.error || "Subscription request failed.");
@@ -245,7 +255,8 @@ export function ChannelClient({ channelId }: ChannelClientProps) {
       setSubToast(nextSubState ? "YouTube subscription verified." : "YouTube unsubscribe verified.");
       setTimeout(() => setSubToast(null), 3000);
     } catch (err: any) {
-      alert(err.message || "Failed to update subscription");
+      setSubToast(err.message || "Failed to update subscription");
+      setTimeout(() => setSubToast(null), 4000);
     } finally {
       setSubscribing(false);
     }
@@ -358,20 +369,20 @@ export function ChannelClient({ channelId }: ChannelClientProps) {
               type="button"
               onClick={handleToggleSubscribe}
               disabled={subscribing}
-              className={`btn btn-sm channel-sub-btn ${isSubscribed === true ? "subscribed" : "btn-primary"}`}
-              title={isSubscribed === true ? "Subscribed on YouTube" : "Manage YouTube subscription"}
+              className={`btn btn-sm channel-sub-btn ${isSubscribed ? "subscribed" : "btn-primary"}`}
+              title={isSubscribed ? "Subscribed on YouTube" : "Subscribe to channel"}
             >
               {subscribing ? (
                 <Loader2 size={16} className="spin" />
-              ) : isSubscribed === true ? (
+              ) : isSubscribed ? (
                 <>
                   <Check size={16} />
                   <span>Subscribed</span>
                 </>
               ) : (
                 <>
-                  <UserPlus size={16} />
-                  <span>{isSubscribed === null ? "Connect YouTube" : "Subscribe"}</span>
+                  <Bell size={16} />
+                  <span>Subscribe</span>
                 </>
               )}
             </button>
@@ -494,15 +505,7 @@ export function ChannelClient({ channelId }: ChannelClientProps) {
                       <div className="video-card-creator-row">
                         <div
                           className="creator-info-group"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            if (video.channelId || channel?.id) {
-                              router.push(`/channel/${encodeURIComponent(video.channelId || channel!.id)}`);
-                            }
-                          }}
-                          role="button"
-                          tabIndex={0}
-                          title={`View ${creatorName}'s channel`}
+                          title={creatorName}
                         >
                           <div className="creator-avatar-wrap">
                             {channelAvatarUrl ? (
@@ -627,6 +630,12 @@ export function ChannelClient({ channelId }: ChannelClientProps) {
         </div>
       )}
 
+      {/* In-app YouTube Connection Modal */}
+      <YouTubeConnectionPopup
+        isOpen={showConnectPopup}
+        onClose={() => setShowConnectPopup(false)}
+      />
+
       <style jsx>{`
         .channel-page-root {
           min-height: 100vh;
@@ -689,6 +698,7 @@ export function ChannelClient({ channelId }: ChannelClientProps) {
         }
 
         .channel-avatar-wrap {
+          position: relative;
           width: 100px;
           height: 100px;
           border-radius: 50%;
@@ -1079,13 +1089,8 @@ export function ChannelClient({ channelId }: ChannelClientProps) {
           align-items: center;
           gap: 0.35rem;
           color: var(--text-muted);
-          cursor: pointer;
+          cursor: default;
           max-width: 100%;
-        }
-
-        .creator-info-group:hover .creator-name-text {
-          color: var(--primary);
-          text-decoration: underline;
         }
 
         .creator-avatar-wrap {
@@ -1203,6 +1208,7 @@ export function ChannelClient({ channelId }: ChannelClientProps) {
           }
 
           .channel-avatar-wrap {
+            position: relative !important;
             width: 72px !important;
             height: 72px !important;
             min-width: 72px !important;

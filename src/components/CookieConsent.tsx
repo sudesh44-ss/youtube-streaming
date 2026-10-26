@@ -9,7 +9,11 @@ import {
   acceptAllConsent,
   rejectOptionalConsent,
   OPEN_COOKIE_SETTINGS_EVENT,
+  CONSENT_STORAGE_KEY,
 } from "@/lib/cookie-consent";
+
+// Storage and event compatibility: "omnidiscover_cookie_consent" and "open-cookie-settings"
+export { CONSENT_STORAGE_KEY, OPEN_COOKIE_SETTINGS_EVENT };
 
 export function CookieConsent() {
   const [isVisible, setIsVisible] = useState(false);
@@ -120,7 +124,7 @@ export function CookieConsent() {
         {!isCustomizing ? (
           <>
             <p id="cookie-desc" className="cookie-description">
-              OmniDiscover uses <strong>Strictly Necessary</strong> cookies for authentication, CSRF mitigation, and
+              Tubify uses <strong>Strictly Necessary</strong> cookies for authentication, CSRF mitigation, and
               account security. We use <strong>Functional Browser Storage</strong> (<code>localStorage</code> and{" "}
               <code>IndexedDB</code>) solely to remember your theme, regional preferences, and offline search cache.
               We deploy <strong>zero</strong> advertising or third-party tracking pixels.
@@ -219,7 +223,7 @@ export function CookieConsent() {
                     </span>
                   </div>
                   <p className="category-desc">
-                    OmniDiscover does not deploy Google Analytics, tracking pixels, or third-party telemetry scripts.
+                    Tubify does not deploy Google Analytics, tracking pixels, or third-party telemetry scripts.
                     This category is permanently inactive.
                   </p>
                 </div>
@@ -235,7 +239,7 @@ export function CookieConsent() {
                     </span>
                   </div>
                   <p className="category-desc">
-                    OmniDiscover does not sell personal data, host third-party advertisements, or participate in
+                    Tubify does not sell personal data, host third-party advertisements, or participate in
                     cross-site behavioral profiling.
                   </p>
                 </div>

@@ -51,10 +51,10 @@ export default function PrivacyPolicyPage() {
             1. Operator Information &amp; Scope
           </h2>
           <p>
-            OmniDiscover (&quot;the Platform&quot;, &quot;we&quot;, &quot;our&quot;) is a privacy-first web application designed
+            Tubify (&quot;the Platform&quot;, &quot;we&quot;, &quot;our&quot;) is a privacy-first web application designed
             for streamlined content discovery, personalized recommendations, and creator interaction across media ecosystems.
             This Privacy Policy describes transparently how we collect, store, process, protect, and delete personal data.
-            OmniDiscover is operated by the OmniDiscover project development team. For privacy queries, statutory requests,
+            Tubify is operated by the Tubify project development team. For privacy queries, statutory requests,
             or data protection matters, please reach our team through the in-app{" "}
             <Link href="/help" style={{ color: "var(--primary)" }}>Help Center</Link> or the project repository.
           </p>
@@ -70,7 +70,7 @@ export default function PrivacyPolicyPage() {
             <li>
               <strong>Account &amp; Authentication Data:</strong> When registering, your name, display name, and email address
               are stored. Password authentication uses PBKDF2 (100,000 rounds of SHA-512) or Supabase Auth. We distinguish
-              your OmniDiscover login identity from any Google account separately authorized for YouTube features.
+              your Tubify login identity from any Google account separately authorized for YouTube features.
             </li>
             <li>
               <strong>Google &amp; YouTube Authorized Data:</strong> If you connect a Google account, we retrieve your authorized
@@ -111,14 +111,14 @@ export default function PrivacyPolicyPage() {
             </h2>
           </div>
           <p style={{ marginBottom: "0.75rem" }}>
-            OmniDiscover allows users to optionally connect their personal Google account to interact with YouTube creators
+            Tubify allows users to optionally connect their personal Google account to interact with YouTube creators
             directly within the application. Please review the following verified technical safeguards:
           </p>
           <ul style={{ paddingLeft: "1.5rem", display: "flex", flexDirection: "column", gap: "0.625rem" }}>
             <li>
-              <strong>Independent Authorization:</strong> Signing in to OmniDiscover does not grant YouTube permissions. You must
+              <strong>Independent Authorization:</strong> Signing in to Tubify does not grant YouTube permissions. You must
               explicitly authorize Google OAuth in a separate, dedicated consent step. You can use different Google accounts
-              for OmniDiscover login and YouTube actions.
+              for Tubify login and YouTube actions.
             </li>
             <li>
               <strong>Requested Scopes &amp; Actions:</strong> We request only the following scopes:
@@ -137,7 +137,7 @@ export default function PrivacyPolicyPage() {
               with data brokers, and never used for targeted advertisements, marketing campaigns, or cross-site profiling.
             </li>
             <li>
-              <strong>Google API Services User Data Policy Compliance:</strong> OmniDiscover&apos;s use and transfer to any other app
+              <strong>Google API Services User Data Policy Compliance:</strong> Tubify&apos;s use and transfer to any other app
               of information received from Google APIs will adhere to the{" "}
               <a href="https://developers.google.com/terms/api-services-user-data-policy" target="_blank" rel="noopener noreferrer" style={{ color: "var(--primary)", textDecoration: "underline" }}>
                 Google API Services User Data Policy
@@ -177,7 +177,7 @@ export default function PrivacyPolicyPage() {
             </button>
           </div>
           <p style={{ marginBottom: "0.75rem" }}>
-            OmniDiscover enforces a functional, transparent consent model. We distinguish necessary cookies from functional browser storage:
+            Tubify enforces a functional, transparent consent model. We distinguish necessary cookies from functional browser storage:
           </p>
           <ul style={{ paddingLeft: "1.5rem", display: "flex", flexDirection: "column", gap: "0.5rem" }}>
             <li>
@@ -192,7 +192,7 @@ export default function PrivacyPolicyPage() {
               storage is rejected, these keys are stopped and cleared.
             </li>
             <li>
-              <strong>Zero Tracking Pixels or Ad Cookies:</strong> OmniDiscover does not deploy third-party advertising cookies,
+              <strong>Zero Tracking Pixels or Ad Cookies:</strong> Tubify does not deploy third-party advertising cookies,
               Google Analytics, behavioral tracking pixels, or fingerprinting scripts.
             </li>
           </ul>
@@ -235,7 +235,7 @@ export default function PrivacyPolicyPage() {
             6. Third-Party Service Providers
           </h2>
           <p>
-            When utilizing OmniDiscover, external requests are dispatched exclusively to verified service providers:
+            When utilizing Tubify, external requests are dispatched exclusively to verified service providers:
           </p>
           <ul style={{ paddingLeft: "1.5rem", display: "flex", flexDirection: "column", gap: "0.5rem", marginTop: "0.5rem" }}>
             <li>
@@ -273,7 +273,7 @@ export default function PrivacyPolicyPage() {
             <strong>Settings &rarr; Privacy &amp; Security &rarr; Delete Account</strong>:
           </p>
           <ul style={{ paddingLeft: "1.5rem", display: "flex", flexDirection: "column", gap: "0.5rem", marginTop: "0.5rem" }}>
-            <li>If a YouTube account is connected, OmniDiscover automatically attempts external token revocation with Google.</li>
+            <li>If a YouTube account is connected, Tubify automatically attempts external token revocation with Google.</li>
             <li>Your Supabase Auth user record is permanently deleted.</li>
             <li>
               All associated database rows across <code>profiles</code>, <code>user_preferences</code>, <code>provider_credentials</code>,{" "}
@@ -314,7 +314,7 @@ export default function PrivacyPolicyPage() {
             9. Children&apos;s Privacy
           </h2>
           <p>
-            OmniDiscover is not directed to children under the age of 13 (or under 16 where required by local law). We do not knowingly
+            Tubify is not directed to children under the age of 13 (or under 16 where required by local law). We do not knowingly
             collect personal data from children. If you become aware that a child has provided us with personal data without parental
             consent, please contact us immediately to remove the information.
           </p>

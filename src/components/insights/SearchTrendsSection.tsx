@@ -55,7 +55,7 @@ export function SearchTrendsSection({ trends }: SearchTrendsSectionProps) {
       <div className="privacy-guarantee-note">
         <ShieldCheck size={14} className="shield-icon" />
         <span>
-          <strong>Privacy Isolation:</strong> In OmniDiscover, search queries remain strictly isolated to your authenticated account session and local device storage. Real search trends are never shared with external ad brokers.
+          <strong>Privacy Isolation:</strong> In Tubify, search queries remain strictly isolated to your authenticated account session and local device storage. Real search trends are never shared with external ad brokers.
         </span>
       </div>
 

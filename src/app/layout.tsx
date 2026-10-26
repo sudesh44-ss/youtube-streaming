@@ -20,7 +20,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "OmniDiscover — All-in-One Content Discovery Platform",
+  title: "Tubify — All-in-One Content Discovery Platform",
   description: "Discover educational lectures, music, movies, gaming, technology, sports, and news through a unified, secure discovery architecture.",
 };
 

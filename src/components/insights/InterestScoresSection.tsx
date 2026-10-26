@@ -92,7 +92,7 @@ export function InterestScoresSection({ interests }: InterestScoresSectionProps)
       <div className="disclaimer-strip">
         <AlertCircle size={14} className="disclaimer-icon" />
         <span>
-          <strong>Simulated Affinity Rationale:</strong> These scores are demo estimates created solely for user interface evaluation. OmniDiscover has not calculated or inferred these values from your personal Google or YouTube viewing history.
+          <strong>Simulated Affinity Rationale:</strong> These scores are demo estimates created solely for user interface evaluation. Tubify has not calculated or inferred these values from your personal Google or YouTube viewing history.
         </span>
       </div>
 

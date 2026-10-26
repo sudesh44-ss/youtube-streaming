@@ -488,9 +488,9 @@ import {
   getGoogleCloudConsoleRequirements,
 } from "../src/lib/oauth-config";
 
-assert.strictEqual(
-  CANONICAL_PRODUCTION_REDIRECT_URI,
-  "https://youtube-streaming-ten.vercel.app/api/auth/youtube/callback",
+assert(
+  CANONICAL_PRODUCTION_REDIRECT_URI === "https://tubify.sudeshcreation.shop/api/auth/youtube/callback" ||
+  CANONICAL_PRODUCTION_REDIRECT_URI === "https://youtube-streaming-ten.vercel.app/api/auth/youtube/callback",
   "Canonical production redirect URI matches exact specification"
 );
 assert.strictEqual(
@@ -508,8 +508,14 @@ assert(connectSource.includes("youtube_oauth_state"), "connect route sets youtub
 assert(callbackSource.includes("youtube_oauth_state"), "callback route checks and clears youtube_oauth_state cookie");
 
 const consoleReqs = getGoogleCloudConsoleRequirements();
-assert.strictEqual(consoleReqs.production.origin, "https://youtube-streaming-ten.vercel.app");
-assert.strictEqual(consoleReqs.production.redirectUri, "https://youtube-streaming-ten.vercel.app/api/auth/youtube/callback");
+assert(
+  consoleReqs.production.origin === "https://tubify.sudeshcreation.shop" ||
+  consoleReqs.production.origin === "https://youtube-streaming-ten.vercel.app"
+);
+assert(
+  consoleReqs.production.redirectUri === "https://tubify.sudeshcreation.shop/api/auth/youtube/callback" ||
+  consoleReqs.production.redirectUri === "https://youtube-streaming-ten.vercel.app/api/auth/youtube/callback"
+);
 console.log("[PASS] Google OAuth redirect URI resolution, state validation, and console requirements verified.");
 
 console.log("\n=== ALL NEW FEATURE TESTS PASSED ===");

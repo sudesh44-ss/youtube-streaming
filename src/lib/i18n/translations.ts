@@ -137,7 +137,7 @@ export const translations: Record<Language, TranslationDictionary> = {
 
     // Language Settings
     "language.title": "Application Language",
-    "language.description": "Choose the language used for the OmniDiscover application interface.",
+    "language.description": "Choose the language used for the Tubify application interface.",
     "language.selectorLabel": "Select Interface Language:",
     "language.english": "English",
     "language.hindi": "हिन्दी (Hindi)",
@@ -289,7 +289,7 @@ export const translations: Record<Language, TranslationDictionary> = {
 
     // Language Settings
     "language.title": "एप्लिकेशन भाषा",
-    "language.description": "OmniDiscover एप्लिकेशन इंटरफ़ेस के लिए अपनी पसंदीदा भाषा चुनें।",
+    "language.description": "Tubify एप्लिकेशन इंटरफ़ेस के लिए अपनी पसंदीदा भाषा चुनें।",
     "language.selectorLabel": "इंटरफ़ेस भाषा चुनें:",
     "language.english": "English",
     "language.hindi": "हिन्दी (Hindi)",

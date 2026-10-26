@@ -2,8 +2,8 @@ import Link from "next/link";
 import { FileText, ArrowLeft, Shield, Video, AlertTriangle } from "lucide-react";
 
 export const metadata = {
-  title: "Terms & Conditions — OmniDiscover",
-  description: "Official Terms and Conditions governing use of the OmniDiscover content discovery platform.",
+  title: "Terms & Conditions — Tubify",
+  description: "Official Terms and Conditions governing use of the Tubify content discovery platform.",
 };
 
 export default function TermsPage() {
@@ -49,7 +49,7 @@ export default function TermsPage() {
             1. Acceptance of Terms &amp; Eligibility
           </h2>
           <p>
-            By accessing, creating an account on, or using OmniDiscover (&quot;the Service&quot;, &quot;we&quot;, &quot;our&quot;),
+            By accessing, creating an account on, or using Tubify (&quot;the Service&quot;, &quot;we&quot;, &quot;our&quot;),
             you acknowledge that you have read, understood, and agree to be bound by these Terms &amp; Conditions (Version 2026.2)
             and our accompanying <Link href="/privacy" style={{ color: "var(--primary)" }}>Privacy Policy</Link>. If you do not
             agree with these Terms, you must immediately discontinue use of the Service. You represent that you are at least 13
@@ -65,8 +65,8 @@ export default function TermsPage() {
           <p>
             When registering, you agree to provide truthful, accurate, and current information. You are solely responsible for
             safeguarding the confidentiality of your authentication credentials and for all actions performed through your account.
-            You must notify the OmniDiscover team immediately via the <Link href="/help" style={{ color: "var(--primary)" }}>Help Center</Link> of
-            any unauthorized access or security breach. OmniDiscover is not liable for losses resulting from compromised passwords.
+            You must notify the Tubify team immediately via the <Link href="/help" style={{ color: "var(--primary)" }}>Help Center</Link> of
+            any unauthorized access or security breach. Tubify is not liable for losses resulting from compromised passwords.
           </p>
         </section>
 
@@ -79,12 +79,12 @@ export default function TermsPage() {
             </h2>
           </div>
           <p style={{ marginBottom: "0.75rem" }}>
-            OmniDiscover offers optional integration with YouTube via Google OAuth 2.0. By connecting your Google account, you
+            Tubify offers optional integration with YouTube via Google OAuth 2.0. By connecting your Google account, you
             expressly agree to the following conditions:
           </p>
           <ul style={{ paddingLeft: "1.5rem", display: "flex", flexDirection: "column", gap: "0.5rem" }}>
             <li>
-              <strong>Non-Affiliation Disclaimer:</strong> OmniDiscover is an independent software application and is{" "}
+              <strong>Non-Affiliation Disclaimer:</strong> Tubify is an independent software application and is{" "}
               <strong>not affiliated with, endorsed by, sponsored by, or partner-certified by Google LLC or YouTube</strong>.
               All YouTube trademarks, logos, and brand elements belong exclusively to Google LLC.
             </li>
@@ -100,7 +100,7 @@ export default function TermsPage() {
               </a>.
             </li>
             <li>
-              <strong>Authorized Actions on Your Behalf:</strong> When you connect your YouTube account, you authorize OmniDiscover
+              <strong>Authorized Actions on Your Behalf:</strong> When you connect your YouTube account, you authorize Tubify
               to execute user-directed YouTube API requests on your behalf, strictly limited to: (a) subscribing and unsubscribing
               to creators you choose, (b) recording video ratings/likes you initiate, and (c) displaying your authorized channel identity.
             </li>
@@ -115,7 +115,7 @@ export default function TermsPage() {
             <li>
               <strong>API Availability &amp; Quotas:</strong> YouTube actions depend upon Google API availability, network connectivity,
               and API quota allocations. Google may modify, suspend, or restrict API access, endpoints, or permissions at any time
-              without notice. OmniDiscover is not liable for external service interruptions, API quota exhaustion, or account actions
+              without notice. Tubify is not liable for external service interruptions, API quota exhaustion, or account actions
               enforced by Google.
             </li>
           </ul>
@@ -141,7 +141,7 @@ export default function TermsPage() {
             5. Intellectual Property &amp; Content Aggregation
           </h2>
           <p style={{ marginBottom: "0.75rem" }}>
-            OmniDiscover functions as a content aggregation, indexing, and recommendation engine. We do not host, store, or own
+            Tubify functions as a content aggregation, indexing, and recommendation engine. We do not host, store, or own
             third-party media files:
           </p>
           <ul style={{ paddingLeft: "1.5rem", display: "flex", flexDirection: "column", gap: "0.5rem" }}>
@@ -151,7 +151,7 @@ export default function TermsPage() {
             </li>
             <li>
               <strong>Embedded Playback:</strong> All video playback occurs strictly through official, compliant embed players
-              (such as the YouTube IFrame Player API). OmniDiscover does not bypass playback controls, strip ads, or alter
+              (such as the YouTube IFrame Player API). Tubify does not bypass playback controls, strip ads, or alter
               content streams.
             </li>
             <li>
@@ -168,7 +168,7 @@ export default function TermsPage() {
           </h2>
           <p>
             You retain full ownership of any search queries, watchlist selections, and feedback (&quot;not interested&quot;, &quot;like&quot;,
-            &quot;dislike&quot;) you submit. You grant OmniDiscover only the limited, non-exclusive license necessary to process your
+            &quot;dislike&quot;) you submit. You grant Tubify only the limited, non-exclusive license necessary to process your
             inputs to generate your personalized discovery feed. We do not claim proprietary rights over your data, nor do we sell
             user preferences to advertisers.
           </p>
@@ -221,9 +221,9 @@ export default function TermsPage() {
             10. Disclaimer of Warranties &amp; Limitation of Liability
           </h2>
           <p>
-            To the maximum extent permitted by applicable law, OmniDiscover and its developers disclaim all warranties, express or
+            To the maximum extent permitted by applicable law, Tubify and its developers disclaim all warranties, express or
             implied, including warranties of merchantability, fitness for a particular purpose, and non-infringement. In no event
-            shall OmniDiscover, its developers, or contributors be liable for indirect, incidental, consequential, special, or punitive
+            shall Tubify, its developers, or contributors be liable for indirect, incidental, consequential, special, or punitive
             damages, including loss of data, quota exhaustion, or service interruptions resulting from third-party API changes.
           </p>
         </section>

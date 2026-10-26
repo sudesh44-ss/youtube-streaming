@@ -779,7 +779,7 @@ export default function WatchClient({ videoId, initialTitle }: WatchClientProps)
                     type="button"
                     className="btn btn-outline btn-sm watch-notification-info"
                     aria-label="YouTube notification preferences cannot be changed here"
-                    title="YouTube's API does not let OmniDiscover change notification preferences. Manage them on YouTube."
+                    title="YouTube's API does not let Tubify change notification preferences. Manage them on YouTube."
                     onClick={() => showFeedback("Notification preferences are managed on YouTube; this control cannot change them.")}
                   >
                     <Bell size={16} />

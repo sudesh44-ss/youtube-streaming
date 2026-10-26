@@ -138,7 +138,7 @@ export default function InsightsPage() {
           <p className="demo-banner-desc">
             {realInsights?.isColdStart
               ? "You haven't watched any videos or saved searches yet. Below is a sample preview of how your viewing analytics and explainable recommendations will appear once you begin exploring content."
-              : "This section demonstrates the analytics and explainability architecture for OmniDiscover using modular sample data. Log in and watch videos to activate real personalized intelligence."}
+              : "This section demonstrates the analytics and explainability architecture for Tubify using modular sample data. Log in and watch videos to activate real personalized intelligence."}
           </p>
 
           {/* Section Quick Links */}

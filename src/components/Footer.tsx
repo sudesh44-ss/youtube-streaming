@@ -13,7 +13,7 @@ export function Footer() {
           <div className="footer-brand">
             <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", marginBottom: "0.875rem" }}>
               <span style={{ fontWeight: 700, fontSize: "1.125rem", color: "var(--text-main)" }}>
-                Omni<span style={{ color: "var(--primary)" }}>Discover</span>
+                Tub<span style={{ color: "var(--primary)" }}>ify</span>
               </span>
             </div>
             <div style={{ display: "inline-flex", alignItems: "center", gap: "0.375rem", fontSize: "0.75rem", color: "var(--text-dim)" }}>
@@ -84,7 +84,7 @@ export function Footer() {
 
         {/* Footer Bottom Row: Copyright & Made with 💗 on same line */}
         <div className="footer-bottom-row">
-          <p className="footer-bottom-text">© 2026 OmniDiscover. All rights reserved.</p>
+          <p className="footer-bottom-text">© 2026 Tubify. All rights reserved.</p>
           <p className="footer-bottom-text">Made with 💗</p>
         </div>
       </div>

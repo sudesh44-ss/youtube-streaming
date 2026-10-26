@@ -24,7 +24,7 @@ export async function GET(req: NextRequest) {
       signal: AbortSignal.timeout(3000),
       headers: {
         "Accept": "application/json",
-        "User-Agent": "OmniDiscover/1.0",
+        "User-Agent": "Tubify/1.0",
       },
     });
 

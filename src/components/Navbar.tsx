@@ -243,7 +243,7 @@ export function Navbar() {
             <div className="nav-logo-icon">
               <Compass size={20} />
             </div>
-            <span>Omni<span style={{ color: "var(--primary)" }}>Discover</span></span>
+            <span>Tub<span style={{ color: "var(--primary)" }}>ify</span></span>
           </Link>
         </div>
 
@@ -542,7 +542,7 @@ export function Navbar() {
                 <div className="nav-logo-icon">
                   <Compass size={18} />
                 </div>
-                <span>Omni<span style={{ color: "var(--primary)" }}>Discover</span></span>
+                <span>Tub<span style={{ color: "var(--primary)" }}>ify</span></span>
               </Link>
 
               <div className="drawer-header-actions">

@@ -155,6 +155,11 @@ export default function SettingsPage() {
     }
   };
 
+  const showFeedback = (type: "success" | "error", text: string) => {
+    setStatusMessage({ type, text });
+    setTimeout(() => setStatusMessage(null), 4000);
+  };
+
   useEffect(() => {
     loadData();
     if (typeof window !== "undefined") {
@@ -173,7 +178,7 @@ export default function SettingsPage() {
   }, [router]);
 
   const handleDisconnectYouTube = async () => {
-    if (!confirm("Are you sure you want to disconnect your YouTube account? You will not be able to subscribe to creators directly from OmniDiscover until you reconnect.")) {
+    if (!confirm("Are you sure you want to disconnect your YouTube account? You will not be able to subscribe to creators directly from Tubify until you reconnect.")) {
       return;
     }
     setSaving(true);
@@ -187,11 +192,6 @@ export default function SettingsPage() {
     } finally {
       setSaving(false);
     }
-  };
-
-  const showFeedback = (type: "success" | "error", text: string) => {
-    setStatusMessage({ type, text });
-    setTimeout(() => setStatusMessage(null), 4000);
   };
 
   const filteredCountries = useMemo(() => {
@@ -327,7 +327,7 @@ export default function SettingsPage() {
         window.dispatchEvent(new Event("auth-change"));
       }
 
-      alert("Your account has been deleted. Thank you for using OmniDiscover.");
+      alert("Your account has been deleted. Thank you for using Tubify.");
       router.push("/");
       router.refresh();
     } catch (err: any) {
@@ -585,7 +585,7 @@ export default function SettingsPage() {
                   ) : (
                     <div style={{ display: "flex", flexDirection: "column", gap: "1.25rem" }}>
                       <p style={{ fontSize: "0.875rem", color: "var(--text-muted)", lineHeight: 1.6 }}>
-                        Connecting your Google account is required to subscribe to YouTube creators directly and sync your likes through OmniDiscover.
+                        Connecting your Google account is required to subscribe to YouTube creators directly and sync your likes through Tubify.
                         Your YouTube Data API key (configured in <strong>API Connections</strong>) and your Google Account Authorization are completely independent credentials.
                       </p>
 
@@ -984,7 +984,7 @@ export default function SettingsPage() {
                   {t("language.title") || "Application Language"}
                 </h3>
                 <p style={{ fontSize: "0.875rem", color: "var(--text-muted)", lineHeight: 1.5 }}>
-                  {t("language.description") || "Choose the language used for the OmniDiscover application interface."}
+                  {t("language.description") || "Choose the language used for the Tubify application interface."}
                 </p>
               </div>
 
@@ -1277,7 +1277,7 @@ export default function SettingsPage() {
           {/* TAB I: ABOUT & LEGAL */}
           {activeTab === "about" && (
             <div className="card" style={{ display: "flex", flexDirection: "column", gap: "1.25rem" }}>
-              <h3 style={{ fontSize: "1.125rem", fontWeight: 700 }}>About OmniDiscover</h3>
+              <h3 style={{ fontSize: "1.125rem", fontWeight: 700 }}>About Tubify</h3>
               <p style={{ fontSize: "0.875rem", color: "var(--text-muted)", lineHeight: 1.6 }}>
                 Production-grade content discovery platform uniting educational lectures, music, movies, gaming, technology, sports, and news.
               </p>

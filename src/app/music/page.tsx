@@ -29,7 +29,7 @@ export default function MusicPage() {
           </h1>
 
           <p className="music-dev-description">
-            We are currently crafting a dedicated, ad-free music streaming experience directly inside OmniDiscover.
+            We are currently crafting a dedicated, ad-free music streaming experience directly inside Tubify.
             Curated stations, artist radio, and personalized audio playlists will be available in an upcoming release.
           </p>
 

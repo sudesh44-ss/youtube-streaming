@@ -116,7 +116,7 @@ export default function WatchHistoryPage() {
               <span>Watch History</span>
             </h1>
             <p style={{ color: "var(--text-muted)", marginTop: "0.375rem", fontSize: "0.9375rem" }}>
-              Videos you have watched through OmniDiscover on this device.
+              Videos you have watched through Tubify on this device.
             </p>
           </div>
 
@@ -331,7 +331,7 @@ export default function WatchHistoryPage() {
               No Watch History Yet
             </h2>
             <p style={{ color: "var(--text-muted)", fontSize: "0.9375rem", margin: 0, lineHeight: 1.5 }}>
-              Videos you watch on OmniDiscover will appear here so you can easily revisit them anytime.
+              Videos you watch on Tubify will appear here so you can easily revisit them anytime.
             </p>
           </div>
           <Link href="/dashboard" className="btn btn-primary" style={{ padding: "0.625rem 1.5rem" }}>

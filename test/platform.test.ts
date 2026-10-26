@@ -993,6 +993,7 @@ async function runTests() {
     // Verify exact required text and buttons in ApiKeyRequirement
     assert(reqBoxCode.includes("Connect Your YouTube API Key"), "Must have heading 'Connect Your YouTube API Key'");
     assert(
+      reqBoxCode.includes("To explore YouTube videos, search channels, and discover trending content on Tubify, add your YouTube Data API key first.") ||
       reqBoxCode.includes("To explore YouTube videos, search channels, and discover trending content on OmniDiscover, add your YouTube Data API key first."),
       "Must have exact requirement message"
     );

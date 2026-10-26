@@ -116,7 +116,7 @@ export default function SearchHistoryPage() {
               <span>Search History</span>
             </h1>
             <p style={{ color: "var(--text-muted)", marginTop: "0.375rem", fontSize: "0.9375rem" }}>
-              Searches you have submitted in OmniDiscover on this device.
+              Searches you have submitted in Tubify on this device.
             </p>
           </div>
 

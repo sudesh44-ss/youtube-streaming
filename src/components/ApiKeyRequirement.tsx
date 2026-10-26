@@ -63,7 +63,7 @@ export function ApiKeyRequirement({ style, className }: ApiKeyRequirementProps) 
             lineHeight: 1.6,
           }}
         >
-          To explore YouTube videos, search channels, and discover trending content on OmniDiscover, add your YouTube Data API key first.
+          To explore YouTube videos, search channels, and discover trending content on Tubify, add your YouTube Data API key first.
         </p>
       </div>
 
