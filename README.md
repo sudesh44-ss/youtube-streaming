@@ -8,8 +8,6 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=flat-square)](LICENSE)
 [![Deployment: Vercel](https://img.shields.io/badge/Deployment-Vercel-black?style=flat-square&logo=vercel)](https://youtube-streaming-ten.vercel.app)
 
-> **Tubify** is a next-generation content discovery and media streaming platform built with Next.js 16 App Router, React 19, and Supabase. It reimagines web media consumption by eliminating algorithmic feed pollution, offering structured category navigation, Bring-Your-Own-Key (BYOK) provider integrations, a dedicated YouTube Music player, persistent mini-player playback, in-depth watch-time analytics, and enterprise-grade privacy controls.
-
 ---
 
 ## 🌐 Live Application & Links
